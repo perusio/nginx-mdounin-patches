@@ -1,0 +1,41 @@
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1297774383 -10800
+# Node ID 0a1e722edb7c633be9e55ceac2b8a7c33f8c1495
+# Parent  bee508eabb2c30b7a60f62c2edc598eec9db3b38
+Fix error_page status code change in redirect.
+
+Using codes other than 301, 302 and 303 resulted in unexpected behaviour.  E.g.
+something like
+
+    error_page 404 =200 http://localhost/;
+
+resulted in "[alert] ... writev() failed (14: Bad address)" messages and no
+reply returned.  See here for initial report:
+
+http://nginx.org/pipermail/nginx-ru/2010-October/037506.html
+
+The same problem appears when redirecting special error codes which has
+implict code changes, e.g. 497.  See here for report:
+
+http://nginx.org/pipermail/nginx/2010-November/023402.html
+
+diff --git a/src/http/ngx_http_special_response.c b/src/http/ngx_http_special_response.c
+--- a/src/http/ngx_http_special_response.c
++++ b/src/http/ngx_http_special_response.c
+@@ -557,7 +557,14 @@ ngx_http_send_error_page(ngx_http_reques
+         return NGX_ERROR;
+     }
+ 
+-    r->err_status = overwrite > 0 ? overwrite : NGX_HTTP_MOVED_TEMPORARILY;
++    if (overwrite >= NGX_HTTP_MOVED_PERMANENTLY
++        && overwrite < NGX_HTTP_LAST_LEVEL_300)
++    {
++        r->err_status = overwrite;
++
++    } else {
++        r->err_status = NGX_HTTP_MOVED_TEMPORARILY;
++    }
+ 
+     location->hash = 1;
+     ngx_str_set(&location->key, "Location");

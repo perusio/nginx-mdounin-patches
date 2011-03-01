@@ -1,0 +1,22 @@
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1297776703 -10800
+# Node ID 3970edd4440a49d37253b231b97c72f0b0728eed
+# Parent  cc4e1db448df3cb4a67258c0b3649f5d677f5f72
+Cache: correctly set conf_file while adding paths.
+
+Missing conf_file causes incorrect error messages in ngx_add_path() and may
+lead to segmentation fault while reading configuration.
+
+diff --git a/src/http/ngx_http_file_cache.c b/src/http/ngx_http_file_cache.c
+--- a/src/http/ngx_http_file_cache.c
++++ b/src/http/ngx_http_file_cache.c
+@@ -1651,6 +1651,8 @@ ngx_http_file_cache_set_slot(ngx_conf_t 
+     cache->path->manager = ngx_http_file_cache_manager;
+     cache->path->loader = ngx_http_file_cache_loader;
+     cache->path->data = cache;
++    cache->path->conf_file = cf->conf_file->file.name.data;
++    cache->path->line = cf->conf_file->line;
+ 
+     if (ngx_add_path(cf, &cache->path) != NGX_OK) {
+         return NGX_CONF_ERROR;
