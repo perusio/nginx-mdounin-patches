@@ -12,7 +12,7 @@ mailing list.
 
 I applied most of these patches to build my
 [nginx deb](http://debian.perusio.net "My Debian Repo with up to date
-Nginx") package of the **0.9.5** version.
+Nginx") package of the **0.9.6** version.
 
 Some of the patches didn't apply cleanly. They're in the `rejected`
 directory.
