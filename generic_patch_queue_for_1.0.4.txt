@@ -1,0 +1,7 @@
+Hello!
+This is repost of my generic patch queue for nginx.  Included patches
+were already posted on mailing lists (nginx@, nginx-ru@, nginx-devel@).
+Most of these patches are independant and may be cherry-picked, though
+some aren't or at least require merging if applied separately.
+Testing reports are appreciated, as well as reviews.
+Maxim Dounin

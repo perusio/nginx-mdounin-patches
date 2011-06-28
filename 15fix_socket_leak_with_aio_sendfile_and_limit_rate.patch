@@ -1,0 +1,61 @@
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1309186953 -14400
+# Node ID d03835e97b323834ed8f4107cb1e0ecd68f6ca1f
+# Parent  13f58a713e1cbe62e9f0e4009a47978fadd10318
+Fix socket leak with "aio sendfile" and "limit_rate" directives.
+Second aio post happened when timer set by limit_rate expired while we have
+aio request in flight, resulting in "second aio post" alert and socket leak.
+The patch adds actual protection from aio calls with r->aio already set to
+aio sendfile code in ngx_http_copy_filter().  This should fix other cases
+as well, e.g. when sending buffered to disk upstream replies while still
+talking to upstream.
+The ngx_http_writer() is also fixed to handle the above case (though it's
+mostly optimization now).
+Reported by:	Oleksandr V. Typlyns'kyi
+diff --git a/src/http/ngx_http_copy_filter_module.c b/src/http/ngx_http_copy_filter_module.c
+--- a/src/http/ngx_http_copy_filter_module.c
++++ b/src/http/ngx_http_copy_filter_module.c
+@@ -158,6 +158,11 @@ ngx_http_copy_filter(ngx_http_request_t 
+             ngx_file_t            *file;
+             ngx_http_ephemeral_t  *e;
+ 
++            if (r->aio) {
++                c->busy_sendfile = NULL;
++                return rc;
++            }
++
+             file = c->busy_sendfile->file;
+             offset = c->busy_sendfile->file_pos;
+ 
+diff --git a/src/http/ngx_http_request.c b/src/http/ngx_http_request.c
+--- a/src/http/ngx_http_request.c
++++ b/src/http/ngx_http_request.c
+@@ -2245,17 +2245,17 @@ ngx_http_writer(ngx_http_request_t *r)
+             return;
+         }
+ 
+-    } else {
+-        if (wev->delayed || r->aio) {
+-            ngx_log_debug0(NGX_LOG_DEBUG_HTTP, wev->log, 0,
+-                           "http writer delayed");
+-
+-            if (ngx_handle_write_event(wev, clcf->send_lowat) != NGX_OK) {
+-                ngx_http_close_request(r, 0);
+-            }
+-
+-            return;
++    }
++
++    if (wev->delayed || r->aio) {
++        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, wev->log, 0,
++                       "http writer delayed");
++
++        if (ngx_handle_write_event(wev, clcf->send_lowat) != NGX_OK) {
++            ngx_http_close_request(r, 0);
+         }
++
++        return;
+     }
+ 
+     rc = ngx_http_output_filter(r, NULL);

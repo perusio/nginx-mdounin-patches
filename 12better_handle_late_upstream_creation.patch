@@ -1,0 +1,57 @@
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1309184960 -14400
+# Node ID f17d4d2f60c125d977233e9c4998459499006c32
+# Parent  47d9bd9ec0a274d06d3edb9741601f1b75a54a11
+Better handle late upstream creation.
+Configuration with duplicate upstream blocks defined after first use, i.e.
+like
+    server {
+        ...
+        location / {
+            proxy_pass http://backend;
+        }
+    }
+    upstream backend { ... }
+    upstream backend { ... }
+now correctly results in "duplicate upstream" error.
+Additionally, upstream blocks defined after first use now handle various
+server directive parameters ("weight", "max_fails", etc.).  Previously
+configuration like
+    server {
+        ...
+        location / {
+            proxy_pass http://backend;
+        }
+    }
+    upstream backend {
+        server 127.0.0.1 max_fails=5;
+    }
+incorrectly resulted in "invalid parameter "max_fails=5"" error.
+Note that an attempt to redefine unix socket would produce unexpected
+results.  Config like
+    server {
+        ...
+        location / {
+            proxy_pass http://unix:/path/to/socket;
+        }
+    }
+    upstream "/path/to/socket" {
+        server 127.0.0.1;
+    }
+would use upstream with two servers: one with unix socket "/path/to/socket",
+and one 127.0.0.1.  Don't do that.
+diff --git a/src/http/ngx_http_upstream.c b/src/http/ngx_http_upstream.c
+--- a/src/http/ngx_http_upstream.c
++++ b/src/http/ngx_http_upstream.c
+@@ -4245,6 +4245,10 @@ ngx_http_upstream_add(ngx_conf_t *cf, ng
+             continue;
+         }
+ 
++        if (flags & NGX_HTTP_UPSTREAM_CREATE) {
++            uscfp[i]->flags = flags;
++        }
++
+         return uscfp[i];
+     }
+ 

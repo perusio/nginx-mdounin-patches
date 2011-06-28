@@ -1,0 +1,35 @@
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1309179029 -14400
+# Node ID bd70931f54cd99f0c8ab45281e6df8ca26dbc154
+# Parent  2f56387eb87fdbf3212540211381ea972c4a75e3
+Drop incorrect special case for return 204.
+The special case in question leads to replies without body in
+configuration like
+    location / { error_page 404 /zero; return 404; }
+    location /zero { return 204; }
+while replies with empty body are expected per protocol specs.
+Correct one will look like
+    if (status == NGX_HTTP_NO_CONTENT) {
+        rc = ngx_http_send_header(r);
+        if (rc == NGX_ERROR || r->header_only) {
+            return rc;
+        }
+        return ngx_http_send_special(r, NGX_HTTP_LAST);
+    }
+though it looks like it's better to drop this special case at all.
+diff --git a/src/http/ngx_http_core_module.c b/src/http/ngx_http_core_module.c
+--- a/src/http/ngx_http_core_module.c
++++ b/src/http/ngx_http_core_module.c
+@@ -1762,11 +1762,6 @@ ngx_http_send_response(ngx_http_request_
+ 
+     r->headers_out.status = status;
+ 
+-    if (status == NGX_HTTP_NO_CONTENT) {
+-        r->header_only = 1;
+-        return ngx_http_send_header(r);
+-    }
+-
+     if (ngx_http_complex_value(r, cv, &val) != NGX_OK) {
+         return NGX_HTTP_INTERNAL_SERVER_ERROR;
+     }

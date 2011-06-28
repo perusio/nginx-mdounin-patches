@@ -1,0 +1,61 @@
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1309178032 -14400
+# Node ID b857d44e9644325dec7d63b8561ae3b4dfa16150
+# Parent  1c167244d2fdb064c159012c50a7ae3fd1ed254a
+Cache: fix another "stalled cache updating" alert.
+The one reported at [1] happens if client closes prematurely connection
+before response header was got from upstream and response isn't cacheable.
+As such situations are expected to happen on other errors too, teach
+ngx_http_upstream_finalize_request() to free cache in such situations.
+This is consistent with behaviour for cacheable responses.
+[1] http://www.nginx.org/pipermail/nginx/2011-June/027522.html
+diff --git a/src/http/ngx_http_upstream.c b/src/http/ngx_http_upstream.c
+--- a/src/http/ngx_http_upstream.c
++++ b/src/http/ngx_http_upstream.c
+@@ -2031,15 +2031,6 @@ ngx_http_upstream_send_response(ngx_http
+             c->error = 1;
+ 
+         } else {
+-
+-#if (NGX_HTTP_CACHE)
+-
+-            if (r->cache) {
+-                ngx_http_file_cache_free(r->cache, u->pipe->temp_file);
+-            }
+-
+-#endif
+-
+             ngx_http_upstream_finalize_request(r, u, rc);
+             return;
+         }
+@@ -2991,16 +2982,19 @@ ngx_http_upstream_finalize_request(ngx_h
+ 
+ #if (NGX_HTTP_CACHE)
+ 
+-    if (u->cacheable && r->cache) {
+-        time_t  valid;
+-
+-        if (rc == NGX_HTTP_BAD_GATEWAY || rc == NGX_HTTP_GATEWAY_TIME_OUT) {
+-
+-            valid = ngx_http_file_cache_valid(u->conf->cache_valid, rc);
+-
+-            if (valid) {
+-                r->cache->valid_sec = ngx_time() + valid;
+-                r->cache->error = rc;
++    if (r->cache) {
++
++        if (u->cacheable) {
++            time_t  valid;
++
++            if (rc == NGX_HTTP_BAD_GATEWAY || rc == NGX_HTTP_GATEWAY_TIME_OUT) {
++
++                valid = ngx_http_file_cache_valid(u->conf->cache_valid, rc);
++
++                if (valid) {
++                    r->cache->valid_sec = ngx_time() + valid;
++                    r->cache->error = rc;
++                }
+             }
+         }
+ 

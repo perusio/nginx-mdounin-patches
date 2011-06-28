@@ -1,0 +1,57 @@
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1309178389 -14400
+# Node ID 93729d259ec9d8d86d327f1084747af5e11575e8
+# Parent  70fb845ff6f1c7e2a9f769828667c84475d4d341
+Complain on invalid log levels.
+Previously only first log level were required to be correct, while error_log
+directive in fact accepts list of levels (e.g. one may specify "error_log ...
+debug_core debug_http;").  This resulted in (avoidable) wierd behaviour on
+missing semicolon after error_log directive, e.g.
+error_log /path/to/log info
+index index.php;
+silently skipped index directive and it's arguments (trying to interpret
+them as log levels without checking to be correct).
+diff --git a/src/core/ngx_log.c b/src/core/ngx_log.c
+--- a/src/core/ngx_log.c
++++ b/src/core/ngx_log.c
+@@ -369,12 +369,13 @@ ngx_log_create(ngx_cycle_t *cycle, ngx_s
+ char *
+ ngx_log_set_levels(ngx_conf_t *cf, ngx_log_t *log)
+ {
+-    ngx_uint_t   i, n, d;
++    ngx_uint_t   i, n, d, found;
+     ngx_str_t   *value;
+ 
+     value = cf->args->elts;
+ 
+     for (i = 2; i < cf->args->nelts; i++) {
++        found = 0;
+ 
+         for (n = 1; n <= NGX_LOG_DEBUG; n++) {
+             if (ngx_strcmp(value[i].data, err_levels[n].data) == 0) {
+@@ -387,7 +388,8 @@ ngx_log_set_levels(ngx_conf_t *cf, ngx_l
+                 }
+ 
+                 log->log_level = n;
+-                continue;
++                found = 1;
++                break;
+             }
+         }
+ 
+@@ -401,11 +403,13 @@ ngx_log_set_levels(ngx_conf_t *cf, ngx_l
+                 }
+ 
+                 log->log_level |= d;
++                found = 1;
++                break;
+             }
+         }
+ 
+ 
+-        if (log->log_level == 0) {
++        if (!found) {
+             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                                "invalid log level \"%V\"", &value[i]);
+             return NGX_CONF_ERROR;

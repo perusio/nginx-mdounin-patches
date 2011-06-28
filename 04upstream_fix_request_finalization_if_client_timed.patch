@@ -1,0 +1,31 @@
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1309178191 -14400
+# Node ID 17e39a3878e658143550e64b7b728a537ac78a4a
+# Parent  8cde8b1630d8e84d692477ec7f3ee7a54c45fb23
+Upstream: fix request finalization if client timed out.
+Finalizing with rc = 0 caused nginx to wait for another send_timeout before
+actually closing client's connection if client timed out while still talking
+to upstream server.  So preserve rc on NGX_HTTP_REQUEST_TIME_OUT.
+See here for details:
+http://nginx.org/pipermail/nginx/2011-May/026867.html
+diff --git a/src/http/ngx_http_upstream.c b/src/http/ngx_http_upstream.c
+--- a/src/http/ngx_http_upstream.c
++++ b/src/http/ngx_http_upstream.c
+@@ -2308,7 +2308,7 @@ ngx_http_upstream_process_non_buffered_d
+     if (wev->timedout) {
+         c->timedout = 1;
+         ngx_connection_error(c, NGX_ETIMEDOUT, "client timed out");
+-        ngx_http_upstream_finalize_request(r, u, 0);
++        ngx_http_upstream_finalize_request(r, u, NGX_HTTP_REQUEST_TIME_OUT);
+         return;
+     }
+ 
+@@ -3004,6 +3004,7 @@ ngx_http_upstream_finalize_request(ngx_h
+ #endif
+ 
+     if (u->header_sent
++        && rc != NGX_HTTP_REQUEST_TIME_OUT
+         && (rc == NGX_ERROR || rc >= NGX_HTTP_SPECIAL_RESPONSE))
+     {
+         rc = 0;
