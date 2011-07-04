@@ -1,0 +1,105 @@
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1309775338 -14400
+# Node ID 610e909bb9e29766188aa86fae3abe0bd3432940
+# Parent  1c167244d2fdb064c159012c50a7ae3fd1ed254a
+Core: lingering_close on|off|always.
+Normally nginx uses lingering close if it expects more data from client
+(e.g. if it wasn't able to read full request for some reason).  With
+"lingering_close always;" it's now possible to always use lingering
+close.  This may be beneficial from compatibility point of view though
+may consume extra resources.
+Additionally, make sure to activate lingering if we are know there are
+some pending data either on header_in buffer or in socket buffer (e.g.
+pipelined request and no keepalive enabled).
+diff --git a/src/http/ngx_http_core_module.c b/src/http/ngx_http_core_module.c
+--- a/src/http/ngx_http_core_module.c
++++ b/src/http/ngx_http_core_module.c
+@@ -125,6 +125,14 @@ static ngx_conf_enum_t  ngx_http_core_sa
+ };
+ 
+ 
++static ngx_conf_enum_t  ngx_http_core_lingering_close[] = {
++    { ngx_string("off"), NGX_HTTP_LINGERING_OFF },
++    { ngx_string("on"), NGX_HTTP_LINGERING_ON },
++    { ngx_string("always"), NGX_HTTP_LINGERING_ALWAYS },
++    { ngx_null_string, 0 }
++};
++
++
+ static ngx_conf_enum_t  ngx_http_core_if_modified_since[] = {
+     { ngx_string("off"), NGX_HTTP_IMS_OFF },
+     { ngx_string("exact"), NGX_HTTP_IMS_EXACT },
+@@ -530,6 +538,13 @@ static ngx_command_t  ngx_http_core_comm
+       0,
+       NULL },
+ 
++    { ngx_string("lingering_close"),
++      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_enum_slot,
++      NGX_HTTP_LOC_CONF_OFFSET,
++      offsetof(ngx_http_core_loc_conf_t, lingering_close),
++      &ngx_http_core_lingering_close },
++
+     { ngx_string("lingering_time"),
+       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+       ngx_conf_set_msec_slot,
+@@ -3117,6 +3132,7 @@ ngx_http_core_create_loc_conf(ngx_conf_t
+     clcf->keepalive_timeout = NGX_CONF_UNSET_MSEC;
+     clcf->keepalive_header = NGX_CONF_UNSET;
+     clcf->keepalive_requests = NGX_CONF_UNSET_UINT;
++    clcf->lingering_close = NGX_CONF_UNSET_UINT;
+     clcf->lingering_time = NGX_CONF_UNSET_MSEC;
+     clcf->lingering_timeout = NGX_CONF_UNSET_MSEC;
+     clcf->resolver_timeout = NGX_CONF_UNSET_MSEC;
+@@ -3333,6 +3349,8 @@ ngx_http_core_merge_loc_conf(ngx_conf_t 
+                               prev->keepalive_header, 0);
+     ngx_conf_merge_uint_value(conf->keepalive_requests,
+                               prev->keepalive_requests, 100);
++    ngx_conf_merge_uint_value(conf->lingering_close,
++                              prev->lingering_close, NGX_HTTP_LINGERING_ON);
+     ngx_conf_merge_msec_value(conf->lingering_time,
+                               prev->lingering_time, 30000);
+     ngx_conf_merge_msec_value(conf->lingering_timeout,
+diff --git a/src/http/ngx_http_core_module.h b/src/http/ngx_http_core_module.h
+--- a/src/http/ngx_http_core_module.h
++++ b/src/http/ngx_http_core_module.h
+@@ -33,6 +33,11 @@
+ #define NGX_HTTP_SATISFY_ANY            1
+ 
+ 
++#define NGX_HTTP_LINGERING_OFF          0
++#define NGX_HTTP_LINGERING_ON           1
++#define NGX_HTTP_LINGERING_ALWAYS       2
++
++
+ #define NGX_HTTP_IMS_OFF                0
+ #define NGX_HTTP_IMS_EXACT              1
+ #define NGX_HTTP_IMS_BEFORE             2
+@@ -356,6 +361,7 @@ struct ngx_http_core_loc_conf_s {
+     ngx_uint_t    keepalive_requests;      /* keepalive_requests */
+     ngx_uint_t    keepalive_disable;       /* keepalive_disable */
+     ngx_uint_t    satisfy;                 /* satisfy */
++    ngx_uint_t    lingering_close;         /* lingering_close */
+     ngx_uint_t    if_modified_since;       /* if_modified_since */
+     ngx_uint_t    client_body_in_file_only; /* client_body_in_file_only */
+ 
+diff --git a/src/http/ngx_http_request.c b/src/http/ngx_http_request.c
+--- a/src/http/ngx_http_request.c
++++ b/src/http/ngx_http_request.c
+@@ -2146,7 +2146,14 @@ ngx_http_finalize_connection(ngx_http_re
+         ngx_http_set_keepalive(r);
+         return;
+ 
+-    } else if (r->lingering_close && clcf->lingering_timeout > 0) {
++    }
++
++    if (clcf->lingering_close == NGX_HTTP_LINGERING_ALWAYS
++        || (clcf->lingering_close == NGX_HTTP_LINGERING_ON
++            && clcf->lingering_timeout > 0
++            && (r->lingering_close || r->header_in->pos < r->header_in->last
++                || r->connection->read->ready)))
++    {
+         ngx_http_set_lingering_close(r);
+         return;
+     }

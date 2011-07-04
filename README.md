@@ -2,11 +2,14 @@
 
 ## Background
 
-This is the patch queue provided by [Maxim Dounin](http://mdounin.ru)
-for Nginx. These patches where provided in a
+This is a repository that I mantain with patches provided by by [Maxim Dounin](http://mdounin.ru)
+for Nginx. Most of these patches where provided in a
 [thread](http://nginx.org/pipermail/nginx-devel/2011-June/000974.html)
 of the [nginx-devel](http://nginx.org/mailman/listinfo/nginx-devel)
 mailing list.
+
+It includes also other patches posted to the
+[nginx-devel](http://nginx.org/mailman/listinfo/nginx-devel) mailing list.
 
 ## Application
 
