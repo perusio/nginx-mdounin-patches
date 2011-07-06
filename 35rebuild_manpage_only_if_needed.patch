@@ -1,0 +1,20 @@
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1309954638 -14400
+# Node ID 81b04c4184dcff7dfdbd6ca12ad93f47e8718115
+# Parent  1c167244d2fdb064c159012c50a7ae3fd1ed254a
+Rebuild manpage only if needed.
+diff --git a/auto/install b/auto/install
+--- a/auto/install
++++ b/auto/install
+@@ -74,7 +74,9 @@ esac
+ 
+ cat << END                                                    >> $NGX_MAKEFILE
+ 
+-manpage:
++manpage:	$NGX_OBJS/nginx.8
++
++$NGX_OBJS/nginx.8:	man/nginx.8 $NGX_AUTO_CONFIG_H
+ 	sed -e "s|%%PREFIX%%|$NGX_PREFIX|" \\
+ 		-e "s|%%PID_PATH%%|$NGX_PID_PATH|" \\
+ 		-e "s|%%CONF_PATH%%|$NGX_CONF_PATH|" \\
