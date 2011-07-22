@@ -1,0 +1,67 @@
+Sender: nginx-devel-bounces@nginx.org
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1311343632 -14400
+# Node ID a1b29011f08d37f69ea2e52765361257b37ca670
+# Parent  9b978fa3cd3356f633d83adb05bcdf5c55dd487a
+Upstream: fix memory leak with resolved peers and ssl.
+As round robin peers created with ngx_http_upstream_create_round_robin_peer()
+are allocated from request pool saved ssl sessions leaked on request
+destruction.  Since saving sessions is useless here anyway (each peer is only
+used once) - fix this by not saving sessions at all.
+Reported by Anton Tolchanov:
+http://mailman.nginx.org/pipermail/nginx/2011-July/028117.html
+diff --git a/src/http/ngx_http_upstream_round_robin.c b/src/http/ngx_http_upstream_round_robin.c
+--- a/src/http/ngx_http_upstream_round_robin.c
++++ b/src/http/ngx_http_upstream_round_robin.c
+@@ -15,6 +15,16 @@ static ngx_uint_t
+ ngx_http_upstream_get_peer(ngx_http_upstream_rr_peers_t *peers);
+ 
+ 
++#if (NGX_HTTP_SSL)
++
++static ngx_int_t ngx_http_upstream_dummy_set_session(ngx_peer_connection_t *pc,
++    void *data);
++static void ngx_http_upstream_dummy_save_session(ngx_peer_connection_t *pc,
++    void *data);
++
++#endif
++
++
+ ngx_int_t
+ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
+     ngx_http_upstream_srv_conf_t *us)
+@@ -343,10 +353,8 @@ ngx_http_upstream_create_round_robin_pee
+     r->upstream->peer.free = ngx_http_upstream_free_round_robin_peer;
+     r->upstream->peer.tries = rrp->peers->number;
+ #if (NGX_HTTP_SSL)
+-    r->upstream->peer.set_session =
+-                               ngx_http_upstream_set_round_robin_peer_session;
+-    r->upstream->peer.save_session =
+-                               ngx_http_upstream_save_round_robin_peer_session;
++    r->upstream->peer.set_session = ngx_http_upstream_dummy_set_session;
++    r->upstream->peer.save_session = ngx_http_upstream_dummy_save_session;
+ #endif
+ 
+     return NGX_OK;
+@@ -688,6 +696,20 @@ ngx_http_upstream_free_round_robin_peer(
+ 
+ #if (NGX_HTTP_SSL)
+ 
++static ngx_int_t
++ngx_http_upstream_dummy_set_session(ngx_peer_connection_t *pc, void *data)
++{
++    return NGX_OK;
++}
++
++
++static void
++ngx_http_upstream_dummy_save_session(ngx_peer_connection_t *pc, void *data)
++{
++    return;
++}
++
++
+ ngx_int_t
+ ngx_http_upstream_set_round_robin_peer_session(ngx_peer_connection_t *pc,
+     void *data)
