@@ -11,6 +11,14 @@ mailing list.
 It includes also other patches posted to the
 [nginx-devel](http://nginx.org/mailman/listinfo/nginx-devel) mailing list.
 
+## Upstream Keep-Alive
+
+The
+[upstream keep-alive](http://mailman.nginx.org/pipermail/nginx-devel/2011-July/001057.html)
+patch is now included. Refer to the mailing list
+[message](http://mailman.nginx.org/pipermail/nginx-devel/2011-July/001057.html)
+for application and usage.
+
 ## Application
 
 I applied the **non-rejected** patches to build my
