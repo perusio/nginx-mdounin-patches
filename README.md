@@ -23,7 +23,8 @@ for application and usage.
 
 I applied the **non-rejected** patches to build my
 [nginx deb](http://debian.perusio.net "My Debian Repo with up to date
-Nginx") package of the **1.0.5** version.
+Nginx") package of the **1.1.0** version with the
+`upstream-keep-alive` patch and module.
 
 If any of the patches don't apply cleanly, they're moved to the `rejected`
 directory.
