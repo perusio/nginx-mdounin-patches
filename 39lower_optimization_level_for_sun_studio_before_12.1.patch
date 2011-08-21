@@ -1,0 +1,63 @@
+Sender: nginx-devel-bounces@nginx.org
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1313530448 -14400
+# Node ID 0879b1bfe58dbccc21accbf32f25306ecacb26e4
+# Parent  561a37709f6d7f31424a04d7e2c4855a7464a933
+Lower optimization level for Sun Studio before 12.1.
+At least Sun Studio 12 has problems with bit-fields exposed by nginx code
+(caught by test suite).  They seems to be fixed in Sun Studio 12.1.  As a
+workaround use "-fast -xalias_level=any" for older versions, it resolves
+the problem.
+diff --git a/auto/cc/sunc b/auto/cc/sunc
+--- a/auto/cc/sunc
++++ b/auto/cc/sunc
+@@ -6,6 +6,7 @@
+ # Sun C 5.8 2005/10/13                    Sun Studio 11
+ # Sun C 5.9 SunOS_i386 2007/05/03         Sun Studio 12
+ # Sun C 5.9 SunOS_sparc 2007/05/03
++# Sun C 5.10 SunOS_i386 2009/06/03        Sun Studio 12.1
+ 
+ NGX_SUNC_VER=`$CC -V 2>&1 | grep 'Sun C' 2>&1 \
+                           | sed -e 's/^.* Sun C \(.*\)/\1/'`
+@@ -57,9 +58,19 @@ esac
+ 
+ # optimizations
+ 
++# 20736 == 0x5100, Sun Studio 12.1
++
++if [ "$ngx_sunc_ver" -ge 20736 ]; then
++    FAST="-fast"
++
++else
++    # older versions had problems with bit-fields
++    FAST="-fast -xalias_level=any"
++fi
++
+ IPO=-xipo
+-CFLAGS="$CFLAGS -fast $IPO"
+-CORE_LINK="$CORE_LINK -fast $IPO"
++CFLAGS="$CFLAGS $FAST $IPO"
++CORE_LINK="$CORE_LINK $FAST $IPO"
+ 
+ 
+ case $CPU in
+@@ -126,15 +137,15 @@ CFLAGS="$CFLAGS $CPU_OPT"
+ 
+ 
+ if [ ".$PCRE_OPT" = "." ]; then
+-    PCRE_OPT="-fast $IPO $CPU_OPT"
++    PCRE_OPT="$FAST $IPO $CPU_OPT"
+ fi
+ 
+ if [ ".$MD5_OPT" = "." ]; then
+-    MD5_OPT="-fast $IPO $CPU_OPT"
++    MD5_OPT="$FAST $IPO $CPU_OPT"
+ fi
+ 
+ if [ ".$ZLIB_OPT" = "." ]; then
+-    ZLIB_OPT="-fast $IPO $CPU_OPT"
++    ZLIB_OPT="$FAST $IPO $CPU_OPT"
+ fi
+ 
+ 

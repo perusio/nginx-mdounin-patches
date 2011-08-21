@@ -1,0 +1,93 @@
+Sender: nginx-devel-bounces@nginx.org
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1313839727 -14400
+# Node ID 1343bc568a27e99d3f5b7d9bcbefefc1a26cf565
+# Parent  808804a512eff99261b7c0643256f8824866afa7
+Move SO_ACCEPTFILTER and TCP_DEFER_ACCEPT checks into configure.
+NetBSD 5.0+ has SO_ACCEPTFILTER support merged from FreeBSD, and having
+accept filter check in FreeBSD-specific ngx_freebsd_config.h prevents it
+from being used on NetBSD.  Therefore move the check into configure (and
+do the same for Linux-specific TCP_DEFER_ACCEPT, just to be in line).
+diff --git a/auto/unix b/auto/unix
+--- a/auto/unix
++++ b/auto/unix
+@@ -295,6 +295,7 @@ if [ $ngx_found != yes ]; then
+     fi
+ fi
+ 
++
+ ngx_feature="SO_SETFIB"
+ ngx_feature_name="NGX_HAVE_SETFIB"
+ ngx_feature_run=no
+@@ -305,6 +306,28 @@ ngx_feature_test="setsockopt(0, SOL_SOCK
+ . auto/feature
+ 
+ 
++ngx_feature="SO_ACCEPTFILTER"
++ngx_feature_name="NGX_HAVE_DEFERRED_ACCEPT"
++ngx_feature_run=no
++ngx_feature_incs="#include <sys/socket.h>"
++ngx_feature_path=
++ngx_feature_libs=
++ngx_feature_test="setsockopt(0, SOL_SOCKET, SO_ACCEPTFILTER, NULL, 0)"
++. auto/feature
++
++
++ngx_feature="TCP_DEFER_ACCEPT"
++ngx_feature_name="NGX_HAVE_DEFERRED_ACCEPT"
++ngx_feature_run=no
++ngx_feature_incs="#include <sys/socket.h>
++                  #include <netinet/in.h>
++                  #include <netinet/tcp.h>"
++ngx_feature_path=
++ngx_feature_libs=
++ngx_feature_test="setsockopt(0, IPPROTO_TCP, TCP_DEFER_ACCEPT, NULL, 0)"
++. auto/feature
++
++
+ ngx_feature="accept4()"
+ ngx_feature_name="NGX_HAVE_ACCEPT4"
+ ngx_feature_run=no
+diff --git a/src/core/ngx_connection.c b/src/core/ngx_connection.c
+--- a/src/core/ngx_connection.c
++++ b/src/core/ngx_connection.c
+@@ -580,7 +580,7 @@ ngx_configure_listening_sockets(ngx_cycl
+             {
+                 ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_errno,
+                               "setsockopt(SO_ACCEPTFILTER, \"%s\") "
+-                              " for %V failed, ignored",
++                              "for %V failed, ignored",
+                               ls[i].accept_filter, &ls[i].addr_text);
+                 continue;
+             }
+diff --git a/src/os/unix/ngx_freebsd_config.h b/src/os/unix/ngx_freebsd_config.h
+--- a/src/os/unix/ngx_freebsd_config.h
++++ b/src/os/unix/ngx_freebsd_config.h
+@@ -92,11 +92,6 @@ typedef struct aiocb  ngx_aiocb_t;
+ #define NGX_LISTEN_BACKLOG        -1
+ 
+ 
+-#if (defined SO_ACCEPTFILTER && !defined NGX_HAVE_DEFERRED_ACCEPT)
+-#define NGX_HAVE_DEFERRED_ACCEPT  1
+-#endif
+-
+-
+ #if (__FreeBSD_version < 430000 || __FreeBSD_version < 500012)
+ 
+ pid_t rfork_thread(int flags, void *stack, int (*func)(void *arg), void *arg);
+diff --git a/src/os/unix/ngx_linux_config.h b/src/os/unix/ngx_linux_config.h
+--- a/src/os/unix/ngx_linux_config.h
++++ b/src/os/unix/ngx_linux_config.h
+@@ -96,11 +96,6 @@ typedef struct iocb  ngx_aiocb_t;
+ #define NGX_LISTEN_BACKLOG        511
+ 
+ 
+-#if defined TCP_DEFER_ACCEPT && !defined NGX_HAVE_DEFERRED_ACCEPT
+-#define NGX_HAVE_DEFERRED_ACCEPT  1
+-#endif
+-
+-
+ #ifndef NGX_HAVE_SO_SNDLOWAT
+ /* setsockopt(SO_SNDLOWAT) returns ENOPROTOOPT */
+ #define NGX_HAVE_SO_SNDLOWAT         0
