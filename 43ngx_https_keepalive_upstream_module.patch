@@ -9,99 +9,99 @@ diff --git a/ngx_http_upstream_keepalive_module.c b/ngx_http_upstream_keepalive_
 --- a/ngx_http_upstream_keepalive_module.c
 +++ b/ngx_http_upstream_keepalive_module.c
 @@ -32,6 +32,11 @@ typedef struct {
-  ngx_event_get_peer_pt              original_get_peer;
-  ngx_event_free_peer_pt             original_free_peer;
-
-  +#if (NGX_HTTP_SSL)
-  +    ngx_event_set_peer_session_pt      original_set_session;
-  +    ngx_event_save_peer_session_pt     original_save_session;
-  +#endif
-  +
-  ngx_uint_t                         failed;       /* unsigned:1 */
-
-} ngx_http_upstream_keepalive_peer_data_t;
-@@ -59,6 +64,13 @@ static void ngx_http_upstream_free_keepa
-  static void ngx_http_upstream_keepalive_dummy_handler(ngx_event_t *ev);
-static void ngx_http_upstream_keepalive_close_handler(ngx_event_t *ev);
-
+     ngx_event_get_peer_pt              original_get_peer;
+     ngx_event_free_peer_pt             original_free_peer;
+ 
 +#if (NGX_HTTP_SSL)
-+static ngx_int_t ngx_http_upstream_keepalive_set_session(
-                                                          +    ngx_peer_connection_t *pc, void *data);
-+static void ngx_http_upstream_keepalive_save_session(ngx_peer_connection_t *pc,
-                                                      +    void *data);
++    ngx_event_set_peer_session_pt      original_set_session;
++    ngx_event_save_peer_session_pt     original_save_session;
 +#endif
 +
-static void *ngx_http_upstream_keepalive_create_conf(ngx_conf_t *cf);
-static char *ngx_http_upstream_keepalive(ngx_conf_t *cf, ngx_command_t *cmd,
-                                         void *conf);
+     ngx_uint_t                         failed;       /* unsigned:1 */
+ 
+ } ngx_http_upstream_keepalive_peer_data_t;
+@@ -59,6 +64,13 @@ static void ngx_http_upstream_free_keepa
+ static void ngx_http_upstream_keepalive_dummy_handler(ngx_event_t *ev);
+ static void ngx_http_upstream_keepalive_close_handler(ngx_event_t *ev);
+ 
++#if (NGX_HTTP_SSL)
++static ngx_int_t ngx_http_upstream_keepalive_set_session(
++    ngx_peer_connection_t *pc, void *data);
++static void ngx_http_upstream_keepalive_save_session(ngx_peer_connection_t *pc,
++    void *data);
++#endif
++
+ static void *ngx_http_upstream_keepalive_create_conf(ngx_conf_t *cf);
+ static char *ngx_http_upstream_keepalive(ngx_conf_t *cf, ngx_command_t *cmd,
+     void *conf);
 @@ -182,6 +194,13 @@ ngx_http_upstream_init_keepalive_peer(ng
-                                                           r->upstream->peer.get = ngx_http_upstream_get_keepalive_peer;
-                                                           r->upstream->peer.free = ngx_http_upstream_free_keepalive_peer;
-
-                                                           +#if (NGX_HTTP_SSL)
-                                                           +    kp->original_set_session = r->upstream->peer.set_session;
-                                                           +    kp->original_save_session = r->upstream->peer.save_session;
-                                                           +    r->upstream->peer.set_session = ngx_http_upstream_keepalive_set_session;
-                                                           +    r->upstream->peer.save_session = ngx_http_upstream_keepalive_save_session;
-                                                           +#endif
-                                                           +
-                                                           return NGX_OK;
-                                                           }
-
-  @@ -423,6 +442,29 @@ close:
-  }
-
-
+     r->upstream->peer.get = ngx_http_upstream_get_keepalive_peer;
+     r->upstream->peer.free = ngx_http_upstream_free_keepalive_peer;
+ 
++#if (NGX_HTTP_SSL)
++    kp->original_set_session = r->upstream->peer.set_session;
++    kp->original_save_session = r->upstream->peer.save_session;
++    r->upstream->peer.set_session = ngx_http_upstream_keepalive_set_session;
++    r->upstream->peer.save_session = ngx_http_upstream_keepalive_save_session;
++#endif
++
+     return NGX_OK;
+ }
+ 
+@@ -423,6 +442,29 @@ close:
+ }
+ 
+ 
 +#if (NGX_HTTP_SSL)
 +
 +static ngx_int_t
 +ngx_http_upstream_keepalive_set_session(ngx_peer_connection_t *pc, void *data)
 +{
-  +    ngx_http_upstream_keepalive_peer_data_t  *kp = data;
-  +
-    +    return kp->original_set_session(pc, kp->data);
-  +}
++    ngx_http_upstream_keepalive_peer_data_t  *kp = data;
++
++    return kp->original_set_session(pc, kp->data);
++}
 +
 +
 +static void
 +ngx_http_upstream_keepalive_save_session(ngx_peer_connection_t *pc, void *data)
 +{
-  +    ngx_http_upstream_keepalive_peer_data_t  *kp = data;
-  +
-    +    kp->original_save_session(pc, kp->data);
-  +    return;
-  +}
++    ngx_http_upstream_keepalive_peer_data_t  *kp = data;
++
++    kp->original_save_session(pc, kp->data);
++    return;
++}
 +
 +#endif
 +
 +
-static void *
-ngx_http_upstream_keepalive_create_conf(ngx_conf_t *cf)
-{
+ static void *
+ ngx_http_upstream_keepalive_create_conf(ngx_conf_t *cf)
+ {
 # HG changeset patch
 # User Maxim Dounin <mdounin@mdounin.ru>
 # Date 1314229663 -14400
 # Node ID 3affea1af30649ac1934b01ab30d175abd4fb3be
 # Parent  67b12141506c6be2115b6b0aa151068188b97975
- Keepalive: destroy connection pool.
+Keepalive: destroy connection pool.
 
-    diff --git a/ngx_http_upstream_keepalive_module.c b/ngx_http_upstream_keepalive_module.c
-    --- a/ngx_http_upstream_keepalive_module.c
-    +++ b/ngx_http_upstream_keepalive_module.c
-    @@ -353,6 +353,7 @@ ngx_http_upstream_free_keepalive_peer(ng
-                                                              item = ngx_queue_data(q, ngx_http_upstream_keepalive_cache_t,
-                                                                                    queue);
-
-                                                              +            ngx_destroy_pool(item->connection->pool);
-                                                              ngx_close_connection(item->connection);
-
-                                                              } else {
-    @@ -437,6 +438,7 @@ close:
-    conf = item->conf;
-
-    ngx_queue_remove(&item->queue);
-    +    ngx_destroy_pool(item->connection->pool);
-    ngx_close_connection(item->connection);
-    ngx_queue_insert_head(&conf->free, &item->queue);
-  }
+diff --git a/ngx_http_upstream_keepalive_module.c b/ngx_http_upstream_keepalive_module.c
+--- a/ngx_http_upstream_keepalive_module.c
++++ b/ngx_http_upstream_keepalive_module.c
+@@ -353,6 +353,7 @@ ngx_http_upstream_free_keepalive_peer(ng
+             item = ngx_queue_data(q, ngx_http_upstream_keepalive_cache_t,
+                                   queue);
+ 
++            ngx_destroy_pool(item->connection->pool);
+             ngx_close_connection(item->connection);
+ 
+         } else {
+@@ -437,6 +438,7 @@ close:
+     conf = item->conf;
+ 
+     ngx_queue_remove(&item->queue);
++    ngx_destroy_pool(item->connection->pool);
+     ngx_close_connection(item->connection);
+     ngx_queue_insert_head(&conf->free, &item->queue);
+ }
 
