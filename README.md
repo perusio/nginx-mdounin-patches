@@ -4,7 +4,7 @@
 
 This is a repository that I mantain with patches provided by by [Maxim Dounin](http://mdounin.ru)
 for Nginx. Most of these patches where provided in a
-[thread](http://nginx.org/pipermail/nginx-devel/2011-June/000974.html)
+[thread](http://mailman.nginx.org/pipermail/nginx-devel/2011-September/001150.html)
 of the [nginx-devel](http://nginx.org/mailman/listinfo/nginx-devel)
 mailing list.
 
@@ -13,11 +13,8 @@ It includes also other patches posted to the
 
 ## Upstream Keep-Alive
 
-The
-[upstream keep-alive](http://mailman.nginx.org/pipermail/nginx-devel/2011-July/001057.html)
-patch is now included. Refer to the mailing list
-[message](http://mailman.nginx.org/pipermail/nginx-devel/2011-July/001057.html)
-for application and usage.
+The [upstream keep-alive](http://mailman.nginx.org/pipermail/nginx-devel/2011-September/001147.html)
+cumulative patch is included for 1.1.2.
 
 ## Application
 
