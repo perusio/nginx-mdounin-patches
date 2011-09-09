@@ -1,9 +1,9 @@
 # HG changeset patch
 # User Maxim Dounin <mdounin@mdounin.ru>
-# Date 1309186953 -14400
-# Node ID d03835e97b323834ed8f4107cb1e0ecd68f6ca1f
-# Parent  13f58a713e1cbe62e9f0e4009a47978fadd10318
-Fix socket leak with "aio sendfile" and "limit_rate" directives.
+# Date 1315324497 -14400
+# Node ID 8e75ca21ad556974aeee9156a6534ebe4d12146b
+# Parent  e8c97615dd5c845ba1dc76681c687be3fe71130d
+Fix for socket leak with "aio sendfile" and "limit_rate".
 Second aio post happened when timer set by limit_rate expired while we have
 aio request in flight, resulting in "second aio post" alert and socket leak.
 The patch adds actual protection from aio calls with r->aio already set to
@@ -12,7 +12,7 @@ as well, e.g. when sending buffered to disk upstream replies while still
 talking to upstream.
 The ngx_http_writer() is also fixed to handle the above case (though it's
 mostly optimization now).
-Reported by:	Oleksandr V. Typlyns'kyi
+Reported by Oleksandr V. Typlyns'kyi.
 diff --git a/src/http/ngx_http_copy_filter_module.c b/src/http/ngx_http_copy_filter_module.c
 --- a/src/http/ngx_http_copy_filter_module.c
 +++ b/src/http/ngx_http_copy_filter_module.c
@@ -31,7 +31,7 @@ diff --git a/src/http/ngx_http_copy_filter_module.c b/src/http/ngx_http_copy_fil
 diff --git a/src/http/ngx_http_request.c b/src/http/ngx_http_request.c
 --- a/src/http/ngx_http_request.c
 +++ b/src/http/ngx_http_request.c
-@@ -2245,17 +2245,17 @@ ngx_http_writer(ngx_http_request_t *r)
+@@ -2248,17 +2248,17 @@ ngx_http_writer(ngx_http_request_t *r)
              return;
          }
  

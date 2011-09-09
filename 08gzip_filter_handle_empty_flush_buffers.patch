@@ -1,8 +1,8 @@
 # HG changeset patch
 # User Maxim Dounin <mdounin@mdounin.ru>
-# Date 1309184986 -14400
-# Node ID 3d27d8f8ccb38fb59bb9b5a613dc0c1c8a01a507
-# Parent  f17d4d2f60c125d977233e9c4998459499006c32
+# Date 1315324342 -14400
+# Node ID 4cf0af103bc382a78f894302d1706929a79df4bb
+# Parent  d603ce98fada855f0100b422b7b5672fd22fabea
 Gzip filter: handle empty flush buffers.
 Empty flush buffers are legitimate and may happen e.g. due to $r->flush()
 calls in embedded perl.  If there are no data buffered in zlib deflate()
@@ -10,7 +10,7 @@ will return Z_BUF_ERROR (i.e. no progress possible) without adding anything
 to output.  Don't treat Z_BUF_ERROR as fatal and correctly send empty flush
 buffer if we have no data in output at all.
 See this thread for details:
-http://nginx.org/pipermail/nginx/2010-November/023693.html
+http://mailman.nginx.org/pipermail/nginx/2010-November/023693.html
 diff --git a/src/http/modules/ngx_http_gzip_filter_module.c b/src/http/modules/ngx_http_gzip_filter_module.c
 --- a/src/http/modules/ngx_http_gzip_filter_module.c
 +++ b/src/http/modules/ngx_http_gzip_filter_module.c

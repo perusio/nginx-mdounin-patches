@@ -1,0 +1,44 @@
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1315324342 -14400
+# Node ID 08a723d1784ec0734114f669626189f3de69ae2d
+# Parent  014764a85840606c90317e9f44f2b9fa139cbc8b
+Handling of If-Range with add_header Last-Modified.
+diff --git a/src/http/modules/ngx_http_headers_filter_module.c b/src/http/modules/ngx_http_headers_filter_module.c
+--- a/src/http/modules/ngx_http_headers_filter_module.c
++++ b/src/http/modules/ngx_http_headers_filter_module.c
+@@ -369,7 +369,8 @@ ngx_http_set_last_modified(ngx_http_requ
+         old = NULL;
+     }
+ 
+-    r->headers_out.last_modified_time = -1;
++    r->headers_out.last_modified_time = ngx_http_parse_time(value->data,
++                                                            value->len);
+ 
+     if (old == NULL || *old == NULL) {
+ 
+@@ -382,6 +383,8 @@ ngx_http_set_last_modified(ngx_http_requ
+             return NGX_ERROR;
+         }
+ 
++        *old = h;
++
+     } else {
+         h = *old;
+ 
+diff --git a/src/http/modules/ngx_http_range_filter_module.c b/src/http/modules/ngx_http_range_filter_module.c
+--- a/src/http/modules/ngx_http_range_filter_module.c
++++ b/src/http/modules/ngx_http_range_filter_module.c
+@@ -173,7 +173,11 @@ ngx_http_range_header_filter(ngx_http_re
+         goto next_filter;
+     }
+ 
+-    if (r->headers_in.if_range && r->headers_out.last_modified_time != -1) {
++    if (r->headers_in.if_range) {
++
++        if (r->headers_out.last_modified_time == (time_t) -1) {
++            goto next_filter;
++        }
+ 
+         if_range = ngx_http_parse_time(r->headers_in.if_range->value.data,
+                                        r->headers_in.if_range->value.len);

@@ -1,8 +1,8 @@
 # HG changeset patch
 # User Maxim Dounin <mdounin@mdounin.ru>
-# Date 1309188629 -14400
-# Node ID f1ec9a0595de50832968569b85cee1073d1fa49b
-# Parent  64ebc9b27e0ab7c1150a72f0a202fd14e0759ecb
+# Date 1315324516 -14400
+# Node ID bace4194977872078bfa7586303dc3565cda481a
+# Parent  937024a7294be79e4d64ecb0579884945cebcd0a
 Unbreak build with embedded perl and --with-openssl.
 diff --git a/auto/lib/perl/make b/auto/lib/perl/make
 --- a/auto/lib/perl/make

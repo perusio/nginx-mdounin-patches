@@ -1,9 +1,9 @@
 # HG changeset patch
 # User Maxim Dounin <mdounin@mdounin.ru>
-# Date 1309178512 -14400
-# Node ID 0ec754a289a69cea6b147a1744e277175658a772
-# Parent  93729d259ec9d8d86d327f1084747af5e11575e8
-Fix incorrect 201 replies from dav module.
+# Date 1315324342 -14400
+# Node ID d90e06868b1d53b1da9280c81c113255a3982c92
+# Parent  08a723d1784ec0734114f669626189f3de69ae2d
+Fix for incorrect 201 replies from dav module.
 Replies with 201 code contain body, and we should clearly indicate it's
 empty if it's empty.  Before 0.8.32 chunked was explicitly disabled for
 201 replies and as a result empty body was indicated by connection close

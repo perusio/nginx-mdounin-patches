@@ -1,9 +1,9 @@
 # HG changeset patch
 # User Maxim Dounin <mdounin@mdounin.ru>
-# Date 1309179029 -14400
-# Node ID bd70931f54cd99f0c8ab45281e6df8ca26dbc154
-# Parent  2f56387eb87fdbf3212540211381ea972c4a75e3
-Drop incorrect special case for return 204.
+# Date 1315324342 -14400
+# Node ID e165452c1be8865046f3b498c49285e459b8a0c3
+# Parent  72e3bfd09f58be13e6d6ca736730eaf4ab994ca9
+Incorrect special case for "return 204" removed.
 The special case in question leads to replies without body in
 configuration like
     location / { error_page 404 /zero; return 404; }
@@ -21,7 +21,7 @@ though it looks like it's better to drop this special case at all.
 diff --git a/src/http/ngx_http_core_module.c b/src/http/ngx_http_core_module.c
 --- a/src/http/ngx_http_core_module.c
 +++ b/src/http/ngx_http_core_module.c
-@@ -1762,11 +1762,6 @@ ngx_http_send_response(ngx_http_request_
+@@ -1790,11 +1790,6 @@ ngx_http_send_response(ngx_http_request_
  
      r->headers_out.status = status;
  

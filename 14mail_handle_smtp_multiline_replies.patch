@@ -1,8 +1,8 @@
 # HG changeset patch
 # User Maxim Dounin <mdounin@mdounin.ru>
-# Date 1309187091 -14400
-# Node ID cff690c009b20cf8b0b5d0fcad7e7fbe6bc0b3a0
-# Parent  e56caa64771c6fcffa661943b8b3e4f2a291d485
+# Date 1315324516 -14400
+# Node ID 28b35237ca588d407cbdd17d9535aa72ba589cff
+# Parent  e4da5e68a62f423479785add85c341f832811222
 Mail: handle smtp multiline replies.
 See here for details:
 http://nginx.org/pipermail/nginx/2010-August/021713.html

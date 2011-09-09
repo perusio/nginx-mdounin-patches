@@ -1,8 +1,8 @@
 # HG changeset patch
 # User Maxim Dounin <mdounin@mdounin.ru>
-# Date 1309188306 -14400
-# Node ID ca9582fc94fd3f5e9f72cdfe85612f161de15e87
-# Parent  6b75fa7d985c6e67c20222b9830687c291bdc136
+# Date 1315324516 -14400
+# Node ID 1faaec031ff21b88f1845bd415dcb61251d7443b
+# Parent  1c8c48040004bee990fc2dd984d27e49ca80b017
 Autoindex: escape '?' in file names.
 For files with '?' in their names autoindex generated links with '?' not
 escaped.  This resulted in effectively truncated links as '?' indicates
@@ -12,7 +12,7 @@ generic NGX_ESCAPE_URI_COMPONENT which escapes everything but unreseved
 characters as per RFC 3986.  This aproach also renders unneeded special colon
 processing (as colon is percent-encoded now), it's dropped accordingly.
 [1] http://nginx.org/pipermail/nginx-devel/2010-February/000112.html
-Reported by:	Konstantin Leonov
+Reported by Konstantin Leonov.
 diff --git a/src/core/ngx_string.c b/src/core/ngx_string.c
 --- a/src/core/ngx_string.c
 +++ b/src/core/ngx_string.c

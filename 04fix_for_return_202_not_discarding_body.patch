@@ -1,0 +1,55 @@
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1315324342 -14400
+# Node ID 72e3bfd09f58be13e6d6ca736730eaf4ab994ca9
+# Parent  f0829a9c0e8d49e74b43900aff0b6c3846b12b30
+Fix for "return 202" not discarding body.
+Big POST (not fully preread) to a
+    location / {
+        return 202;
+    }
+resulted in incorrect behaviour due to "return" code path not calling
+ngx_http_discard_request_body().  The same applies to all "return" used
+with 2xx/3xx codes except 201 and 204, and to all "return ... text" uses.
+Fix is to add ngx_http_discard_request_body() call to ngx_http_send_response()
+function where it looks appropriate.  Discard body call from emtpy gif module
+removed as it's now redundant.
+Reported by Pyry Hakulinen, see
+http://mailman.nginx.org/pipermail/nginx/2011-August/028503.html
+diff --git a/src/http/modules/ngx_http_empty_gif_module.c b/src/http/modules/ngx_http_empty_gif_module.c
+--- a/src/http/modules/ngx_http_empty_gif_module.c
++++ b/src/http/modules/ngx_http_empty_gif_module.c
+@@ -111,19 +111,12 @@ static ngx_str_t  ngx_http_gif_type = ng
+ static ngx_int_t
+ ngx_http_empty_gif_handler(ngx_http_request_t *r)
+ {
+-    ngx_int_t                 rc;
+     ngx_http_complex_value_t  cv;
+ 
+     if (!(r->method & (NGX_HTTP_GET|NGX_HTTP_HEAD))) {
+         return NGX_HTTP_NOT_ALLOWED;
+     }
+ 
+-    rc = ngx_http_discard_request_body(r);
+-
+-    if (rc != NGX_OK) {
+-        return rc;
+-    }
+-
+     ngx_memzero(&cv, sizeof(ngx_http_complex_value_t));
+ 
+     cv.value.len = sizeof(ngx_empty_gif);
+diff --git a/src/http/ngx_http_core_module.c b/src/http/ngx_http_core_module.c
+--- a/src/http/ngx_http_core_module.c
++++ b/src/http/ngx_http_core_module.c
+@@ -1784,6 +1784,10 @@ ngx_http_send_response(ngx_http_request_
+     ngx_buf_t    *b;
+     ngx_chain_t   out;
+ 
++    if (ngx_http_discard_request_body(r) != NGX_OK) {
++        return NGX_HTTP_INTERNAL_SERVER_ERROR;
++    }
++
+     r->headers_out.status = status;
+ 
+     if (status == NGX_HTTP_NO_CONTENT) {

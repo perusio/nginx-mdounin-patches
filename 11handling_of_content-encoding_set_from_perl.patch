@@ -1,10 +1,10 @@
 # HG changeset patch
 # User Maxim Dounin <mdounin@mdounin.ru>
-# Date 1309186979 -14400
-# Node ID d43c81dbcd7f0774d72720f7bc9d65aa9bff0cc2
-# Parent  d03835e97b323834ed8f4107cb1e0ecd68f6ca1f
-Correctly handle Content-Encoding set from perl.
-This fixes double gzipping in case gzip filter enabled while perl
+# Date 1315324515 -14400
+# Node ID 4a6e9b96868cb07b2bf5f10d3244994fd6019952
+# Parent  8e75ca21ad556974aeee9156a6534ebe4d12146b
+Handling of Content-Encoding set from perl.
+This fixes double gzipping in case of gzip filter being enabled while perl
 returns already gzipped response.
 diff --git a/src/http/modules/perl/nginx.xs b/src/http/modules/perl/nginx.xs
 --- a/src/http/modules/perl/nginx.xs

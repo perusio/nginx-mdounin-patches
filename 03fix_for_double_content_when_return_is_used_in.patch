@@ -1,9 +1,9 @@
 # HG changeset patch
 # User Maxim Dounin <mdounin@mdounin.ru>
-# Date 1309178892 -14400
-# Node ID 2f56387eb87fdbf3212540211381ea972c4a75e3
-# Parent  0ec754a289a69cea6b147a1744e277175658a772
-Fix double content when return is used in error_page redirection.
+# Date 1315324342 -14400
+# Node ID f0829a9c0e8d49e74b43900aff0b6c3846b12b30
+# Parent  d90e06868b1d53b1da9280c81c113255a3982c92
+Fix for double content when return is used in error_page handler.
 Test case:
    location / {
        error_page 405 /nope;
@@ -15,6 +15,9 @@ Test case:
 This is expected to return 405 with empty body, but in 0.8.42+ will return
 builtin 405 error page as well (though not counted in Content-Length, thus
 breaking protocol).
+Fix is to use status provided by rewrite script execution in case
+it's less than NGX_HTTP_BAD_REQUEST even if r->error_status set.  This
+check is in line with one in ngx_http_script_return_code().
 Note that this patch also changes behaviour for "return 302 ..." and
 "rewrite ... redirect" used as error handler.  E.g.
     location / {

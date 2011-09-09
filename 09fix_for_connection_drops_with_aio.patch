@@ -1,15 +1,15 @@
 # HG changeset patch
 # User Maxim Dounin <mdounin@mdounin.ru>
-# Date 1309186484 -14400
-# Node ID 13f58a713e1cbe62e9f0e4009a47978fadd10318
-# Parent  3d27d8f8ccb38fb59bb9b5a613dc0c1c8a01a507
-Fix connection drops with AIO.
+# Date 1315324342 -14400
+# Node ID e8c97615dd5c845ba1dc76681c687be3fe71130d
+# Parent  4cf0af103bc382a78f894302d1706929a79df4bb
+Fix for connection drops with AIO.
 Connections serving content with AIO to fast clients were dropped with
 "client timed out" messages after send_timeout from response start.
 diff --git a/src/http/ngx_http_request.c b/src/http/ngx_http_request.c
 --- a/src/http/ngx_http_request.c
 +++ b/src/http/ngx_http_request.c
-@@ -2271,7 +2271,7 @@ ngx_http_writer(ngx_http_request_t *r)
+@@ -2274,7 +2274,7 @@ ngx_http_writer(ngx_http_request_t *r)
  
      if (r->buffered || r->postponed || (r == r->main && c->buffered)) {
  

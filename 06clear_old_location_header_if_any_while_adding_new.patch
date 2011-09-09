@@ -1,8 +1,8 @@
 # HG changeset patch
 # User Maxim Dounin <mdounin@mdounin.ru>
-# Date 1309179096 -14400
-# Node ID dc6fcc44895cbd132e635c70ddfb3269b326bf54
-# Parent  bd70931f54cd99f0c8ab45281e6df8ca26dbc154
+# Date 1315324342 -14400
+# Node ID 69e2e11aa425663063801a333a29b305593a6925
+# Parent  e165452c1be8865046f3b498c49285e459b8a0c3
 Clear old Location header (if any) while adding new one.
 This prevents incorrect behaviour when another redirect is issues within
 error_page 302 handler.
@@ -23,7 +23,7 @@ diff --git a/src/http/modules/ngx_http_static_module.c b/src/http/modules/ngx_ht
 diff --git a/src/http/ngx_http_core_module.c b/src/http/ngx_http_core_module.c
 --- a/src/http/ngx_http_core_module.c
 +++ b/src/http/ngx_http_core_module.c
-@@ -959,6 +959,10 @@ ngx_http_core_find_config_phase(ngx_http
+@@ -983,6 +983,10 @@ ngx_http_core_find_config_phase(ngx_http
      }
  
      if (rc == NGX_DONE) {
@@ -34,7 +34,7 @@ diff --git a/src/http/ngx_http_core_module.c b/src/http/ngx_http_core_module.c
          r->headers_out.location = ngx_list_push(&r->headers_out.headers);
          if (r->headers_out.location == NULL) {
              ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
-@@ -1768,6 +1772,10 @@ ngx_http_send_response(ngx_http_request_
+@@ -1796,6 +1800,10 @@ ngx_http_send_response(ngx_http_request_
  
      if (status >= NGX_HTTP_MOVED_PERMANENTLY && status <= NGX_HTTP_SEE_OTHER) {
  

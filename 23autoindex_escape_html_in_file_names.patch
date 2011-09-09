@@ -1,8 +1,8 @@
 # HG changeset patch
 # User Maxim Dounin <mdounin@mdounin.ru>
-# Date 1309188393 -14400
-# Node ID 64ebc9b27e0ab7c1150a72f0a202fd14e0759ecb
-# Parent  ca9582fc94fd3f5e9f72cdfe85612f161de15e87
+# Date 1315324516 -14400
+# Node ID 937024a7294be79e4d64ecb0579884945cebcd0a
+# Parent  1faaec031ff21b88f1845bd415dcb61251d7443b
 Autoindex: escape html in file names.
 diff --git a/src/http/modules/ngx_http_autoindex_module.c b/src/http/modules/ngx_http_autoindex_module.c
 --- a/src/http/modules/ngx_http_autoindex_module.c

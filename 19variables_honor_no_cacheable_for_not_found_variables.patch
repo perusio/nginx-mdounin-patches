@@ -1,8 +1,8 @@
 # HG changeset patch
 # User Maxim Dounin <mdounin@mdounin.ru>
-# Date 1309187542 -14400
-# Node ID f5fc40783ddcbf4db33859ee2a9bce54cf32c350
-# Parent  3210e8744bf18fc2470d47157df754f068451d48
+# Date 1315324516 -14400
+# Node ID 3b75127939ee38809e0847f09de5c139f241053e
+# Parent  a5f19d575163e79c38bdf7e67dc22a72ebb3a7dd
 Variables: honor no_cacheable for not_found variables.
 Variables with not_found flag set follow the same rules as ones with valid
 flag set.  Make sure ngx_http_get_flushed_variable() will flush non-cacheable

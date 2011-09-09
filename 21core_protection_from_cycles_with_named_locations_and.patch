@@ -1,12 +1,12 @@
 # HG changeset patch
 # User Maxim Dounin <mdounin@mdounin.ru>
-# Date 1309188248 -14400
-# Node ID 6b75fa7d985c6e67c20222b9830687c291bdc136
-# Parent  283a416b2235d5383c12a975edc8866f007fb628
-Core: resolve various cycles with named locations and post_action.
+# Date 1315324516 -14400
+# Node ID 1c8c48040004bee990fc2dd984d27e49ca80b017
+# Parent  e854e5abda69f3bdee0f87425f9167dc8cd6adca
+Core: protection from cycles with named locations and post_action.
 Now redirects to named locations are counted against normal uri changes
 limit, and post_action respect this limit as well.  As a result at least the
-following (bad) configurations no longer trigger infinite cycle:
+following (bad) configurations no longer trigger infinite cycles:
 1. Post action which recursively triggers post action:
     location / {
         post_action /index.html;
@@ -16,7 +16,7 @@ following (bad) configurations no longer trigger infinite cycle:
         post_action @nonexistent;
     }
 3. Recursive error page for 500 (Internal Server Error) pointing to
-nonexistent named location:
+a nonexistent named location:
     location / {
         recursive_error_pages on;
         error_page 500 @nonexistent;
@@ -25,7 +25,7 @@ nonexistent named location:
 diff --git a/src/http/ngx_http_core_module.c b/src/http/ngx_http_core_module.c
 --- a/src/http/ngx_http_core_module.c
 +++ b/src/http/ngx_http_core_module.c
-@@ -2357,6 +2357,16 @@ ngx_http_named_location(ngx_http_request
+@@ -2525,6 +2525,16 @@ ngx_http_named_location(ngx_http_request
      ngx_http_core_main_conf_t   *cmcf;
  
      r->main->count++;
@@ -45,7 +45,7 @@ diff --git a/src/http/ngx_http_core_module.c b/src/http/ngx_http_core_module.c
 diff --git a/src/http/ngx_http_request.c b/src/http/ngx_http_request.c
 --- a/src/http/ngx_http_request.c
 +++ b/src/http/ngx_http_request.c
-@@ -2894,6 +2894,10 @@ ngx_http_post_action(ngx_http_request_t 
+@@ -2896,6 +2896,10 @@ ngx_http_post_action(ngx_http_request_t 
          return NGX_DECLINED;
      }
  

@@ -1,0 +1,85 @@
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1315324516 -14400
+# Node ID 844f42dbe78794bad20366b51b19ee9b9ed32853
+# Parent  437a4ad9102ddd776bd866e3b2ff18553104814d
+Fix for proxy_store leaving temporary files for subrequests.
+Temporary files might not be removed if the "proxy_store" or "fastcgi_store"
+directives were used for subrequests (e.g. ssi includes) and client closed
+prematurely connection.
+Non-active subrequests are finalized out of the control of the upstream
+module when client closes connection.  As a result, code to remove unfinished
+temporary files in ngx_http_upstream_process_request() wasn't executed.
+Fix is to move relevant code into ngx_http_upstream_finalize_request() which
+is called in all cases, either directly or via cleanup handler.
+Problem was originally noted here:
+http://nginx.org/pipermail/nginx-ru/2009-April/024597.html
+Patch was originally posted here (no changes since then):
+http://nginx.org/pipermail/nginx-ru/2009-May/024766.html
+Test case is here:
+http://mdounin.ru/hg/nginx-tests/rev/1d3c82227a05
+http://mdounin.ru/hg/nginx-tests/file/tip/proxy-store.t
+diff --git a/src/http/ngx_http_upstream.c b/src/http/ngx_http_upstream.c
+--- a/src/http/ngx_http_upstream.c
++++ b/src/http/ngx_http_upstream.c
+@@ -2617,7 +2617,6 @@ ngx_http_upstream_process_upstream(ngx_h
+ static void
+ ngx_http_upstream_process_request(ngx_http_request_t *r)
+ {
+-    ngx_uint_t            del;
+     ngx_temp_file_t      *tf;
+     ngx_event_pipe_t     *p;
+     ngx_http_upstream_t  *u;
+@@ -2629,30 +2628,16 @@ ngx_http_upstream_process_request(ngx_ht
+ 
+         if (u->store) {
+ 
+-            del = p->upstream_error;
+-
+-            tf = u->pipe->temp_file;
+-
+             if (p->upstream_eof || p->upstream_done) {
+ 
++                tf = u->pipe->temp_file;
++
+                 if (u->headers_in.status_n == NGX_HTTP_OK
+                     && (u->headers_in.content_length_n == -1
+                         || (u->headers_in.content_length_n == tf->offset)))
+                 {
+                     ngx_http_upstream_store(r, u);
+-
+-                } else {
+-                    del = 1;
+-                }
+-            }
+-
+-            if (del && tf->file.fd != NGX_INVALID_FILE) {
+-
+-                if (ngx_delete_file(tf->file.name.data) == NGX_FILE_ERROR) {
+-
+-                    ngx_log_error(NGX_LOG_CRIT, r->connection->log, ngx_errno,
+-                                  ngx_delete_file_n " \"%s\" failed",
+-                                  u->pipe->temp_file->file.name.data);
++                    u->store = 0;
+                 }
+             }
+         }
+@@ -2994,6 +2979,18 @@ ngx_http_upstream_finalize_request(ngx_h
+                        u->pipe->temp_file->file.fd);
+     }
+ 
++    if (u->store && u->pipe && u->pipe->temp_file
++        && u->pipe->temp_file->file.fd != NGX_INVALID_FILE)
++    {
++        if (ngx_delete_file(u->pipe->temp_file->file.name.data)
++            == NGX_FILE_ERROR)
++        {
++            ngx_log_error(NGX_LOG_CRIT, r->connection->log, ngx_errno,
++                          ngx_delete_file_n " \"%s\" failed",
++                          u->pipe->temp_file->file.name.data);
++        }
++    }
++
+ #if (NGX_HTTP_CACHE)
+ 
+     if (r->cache) {
