@@ -1,0 +1,63 @@
+Sender: nginx-devel-bounces@nginx.org
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1315040808 -14400
+# Node ID 0e57952574064b354ee3084b6c8b3cac80941c33
+# Parent  326308f7e409d9d5e92265ee98be2b3bbd4ba39e
+Upstream: process Connection header and detect close token.
+diff --git a/src/http/ngx_http_upstream.c b/src/http/ngx_http_upstream.c
+--- a/src/http/ngx_http_upstream.c
++++ b/src/http/ngx_http_upstream.c
+@@ -91,6 +91,8 @@ static ngx_int_t ngx_http_upstream_proce
+     ngx_table_elt_t *h, ngx_uint_t offset);
+ static ngx_int_t ngx_http_upstream_process_charset(ngx_http_request_t *r,
+     ngx_table_elt_t *h, ngx_uint_t offset);
++static ngx_int_t ngx_http_upstream_process_connection(ngx_http_request_t *r,
++    ngx_table_elt_t *h, ngx_uint_t offset);
+ static ngx_int_t
+     ngx_http_upstream_process_transfer_encoding(ngx_http_request_t *r,
+     ngx_table_elt_t *h, ngx_uint_t offset);
+@@ -218,7 +220,7 @@ ngx_http_upstream_header_t  ngx_http_ups
+                  offsetof(ngx_http_headers_out_t, accept_ranges), 1 },
+ 
+     { ngx_string("Connection"),
+-                 ngx_http_upstream_ignore_header_line, 0,
++                 ngx_http_upstream_process_connection, 0,
+                  ngx_http_upstream_ignore_header_line, 0, 0 },
+ 
+     { ngx_string("Keep-Alive"),
+@@ -3372,6 +3374,23 @@ ngx_http_upstream_process_charset(ngx_ht
+ 
+ 
+ static ngx_int_t
++ngx_http_upstream_process_connection(ngx_http_request_t *r, ngx_table_elt_t *h,
++    ngx_uint_t offset)
++{
++    r->upstream->headers_in.connection = h;
++
++    if (ngx_strlcasestrn(h->value.data, h->value.data + h->value.len,
++                         (u_char *) "close", 5 - 1)
++        != NULL)
++    {
++        r->upstream->headers_in.connection_close = 1;
++    }
++
++    return NGX_OK;
++}
++
++
++static ngx_int_t
+ ngx_http_upstream_process_transfer_encoding(ngx_http_request_t *r,
+     ngx_table_elt_t *h, ngx_uint_t offset)
+ {
+diff --git a/src/http/ngx_http_upstream.h b/src/http/ngx_http_upstream.h
+--- a/src/http/ngx_http_upstream.h
++++ b/src/http/ngx_http_upstream.h
+@@ -227,6 +227,7 @@ typedef struct {
+ 
+     ngx_array_t                      cache_control;
+ 
++    unsigned                         connection_close:1;
+     unsigned                         chunked:1;
+ } ngx_http_upstream_headers_in_t;
+ 

@@ -1,0 +1,75 @@
+Sender: nginx-devel-bounces@nginx.org
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1297818715 -10800
+# Node ID 326308f7e409d9d5e92265ee98be2b3bbd4ba39e
+# Parent  3c397bb4808ed5a8ec21e07eb9604b1766f723b8
+Upstream: process Transfer-Encoding header and detect chunked one.
+diff --git a/src/http/ngx_http_upstream.c b/src/http/ngx_http_upstream.c
+--- a/src/http/ngx_http_upstream.c
++++ b/src/http/ngx_http_upstream.c
+@@ -91,6 +91,9 @@ static ngx_int_t ngx_http_upstream_proce
+     ngx_table_elt_t *h, ngx_uint_t offset);
+ static ngx_int_t ngx_http_upstream_process_charset(ngx_http_request_t *r,
+     ngx_table_elt_t *h, ngx_uint_t offset);
++static ngx_int_t
++    ngx_http_upstream_process_transfer_encoding(ngx_http_request_t *r,
++    ngx_table_elt_t *h, ngx_uint_t offset);
+ static ngx_int_t ngx_http_upstream_copy_header_line(ngx_http_request_t *r,
+     ngx_table_elt_t *h, ngx_uint_t offset);
+ static ngx_int_t
+@@ -247,6 +250,10 @@ ngx_http_upstream_header_t  ngx_http_ups
+                  ngx_http_upstream_process_charset, 0,
+                  ngx_http_upstream_copy_header_line, 0, 0 },
+ 
++    { ngx_string("Transfer-Encoding"),
++                 ngx_http_upstream_process_transfer_encoding, 0,
++                 ngx_http_upstream_ignore_header_line, 0, 0 },
++
+ #if (NGX_HTTP_GZIP)
+     { ngx_string("Content-Encoding"),
+                  ngx_http_upstream_process_header_line,
+@@ -3365,6 +3372,23 @@ ngx_http_upstream_process_charset(ngx_ht
+ 
+ 
+ static ngx_int_t
++ngx_http_upstream_process_transfer_encoding(ngx_http_request_t *r,
++    ngx_table_elt_t *h, ngx_uint_t offset)
++{
++    r->upstream->headers_in.transfer_encoding = h;
++
++    if (ngx_strlcasestrn(h->value.data, h->value.data + h->value.len,
++                         (u_char *) "chunked", 7 - 1)
++        != NULL)
++    {
++        r->upstream->headers_in.chunked = 1;
++    }
++
++    return NGX_OK;
++}
++
++
++static ngx_int_t
+ ngx_http_upstream_copy_header_line(ngx_http_request_t *r, ngx_table_elt_t *h,
+     ngx_uint_t offset)
+ {
+diff --git a/src/http/ngx_http_upstream.h b/src/http/ngx_http_upstream.h
+--- a/src/http/ngx_http_upstream.h
++++ b/src/http/ngx_http_upstream.h
+@@ -217,6 +217,7 @@ typedef struct {
+     ngx_table_elt_t                 *location;
+     ngx_table_elt_t                 *accept_ranges;
+     ngx_table_elt_t                 *www_authenticate;
++    ngx_table_elt_t                 *transfer_encoding;
+ 
+ #if (NGX_HTTP_GZIP)
+     ngx_table_elt_t                 *content_encoding;
+@@ -225,6 +226,8 @@ typedef struct {
+     off_t                            content_length_n;
+ 
+     ngx_array_t                      cache_control;
++
++    unsigned                         chunked:1;
+ } ngx_http_upstream_headers_in_t;
+ 
+ 

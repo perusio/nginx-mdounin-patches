@@ -1,0 +1,50 @@
+Sender: nginx-devel-bounces@nginx.org
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1314894208 -14400
+# Node ID db8b34c0e7391efc6a68f43ebeace8407f22e19c
+# Parent  aab344fc305b4447f03461e04c1de291cce6caf9
+Upstream: separate pool for peer connections.
+This is required to support persistant https connections as various ssl
+structures are allocated from connection's pool.
+diff --git a/src/http/ngx_http_upstream.c b/src/http/ngx_http_upstream.c
+--- a/src/http/ngx_http_upstream.c
++++ b/src/http/ngx_http_upstream.c
+@@ -1136,8 +1136,20 @@ ngx_http_upstream_connect(ngx_http_reque
+     c->sendfile &= r->connection->sendfile;
+     u->output.sendfile = c->sendfile;
+ 
+-    c->pool = r->pool;
++    if (c->pool == NULL) {
++
++        /* we need separate pool here to be able to cache SSL connections */
++
++        c->pool = ngx_create_pool(128, r->connection->log);
++        if (c->pool == NULL) {
++            ngx_http_upstream_finalize_request(r, u,
++                                               NGX_HTTP_INTERNAL_SERVER_ERROR);
++            return;
++        }
++    }
++
+     c->log = r->connection->log;
++    c->pool->log = c->log;
+     c->read->log = c->log;
+     c->write->log = c->log;
+ 
+@@ -2890,6 +2902,7 @@ ngx_http_upstream_next(ngx_http_request_
+         }
+ #endif
+ 
++        ngx_destroy_pool(u->peer.connection->pool);
+         ngx_close_connection(u->peer.connection);
+     }
+ 
+@@ -2984,6 +2997,7 @@ ngx_http_upstream_finalize_request(ngx_h
+                        "close http upstream connection: %d",
+                        u->peer.connection->fd);
+ 
++        ngx_destroy_pool(u->peer.connection->pool);
+         ngx_close_connection(u->peer.connection);
+     }
+ 

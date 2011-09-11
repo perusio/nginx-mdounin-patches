@@ -1,0 +1,33 @@
+Sender: nginx-devel-bounces@nginx.org
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1314880281 -14400
+# Node ID 18293703cbf48c934f8f601c235b7d9e06e93be5
+# Parent  5d94f8b3e01d74ec6bd5bdcae176a8d3b998237d
+Correct SSL shutdown handling.
+If connection has unsent alerts, SSL_shutdown() tries to send them even
+if SSL_set_shutdown(SSL_RECEIVED_SHUTDOWN|SSL_SENT_SHUTDOWN) was used.
+This can be prevented by SSL_set_quiet_shutdown().  SSL_set_shutdown()
+is required nevertheless to preserve session.
+diff --git a/src/event/ngx_event_openssl.c b/src/event/ngx_event_openssl.c
+--- a/src/event/ngx_event_openssl.c
++++ b/src/event/ngx_event_openssl.c
+@@ -1205,6 +1205,7 @@ ngx_ssl_shutdown(ngx_connection_t *c)
+ 
+     if (c->timedout) {
+         mode = SSL_RECEIVED_SHUTDOWN|SSL_SENT_SHUTDOWN;
++        SSL_set_quiet_shutdown(c->ssl->connection, 1);
+ 
+     } else {
+         mode = SSL_get_shutdown(c->ssl->connection);
+@@ -1216,6 +1217,10 @@ ngx_ssl_shutdown(ngx_connection_t *c)
+         if (c->ssl->no_send_shutdown) {
+             mode |= SSL_SENT_SHUTDOWN;
+         }
++
++        if (c->ssl->no_wait_shutdown && c->ssl->no_send_shutdown) {
++            SSL_set_quiet_shutdown(c->ssl->connection, 1);
++        }
+     }
+ 
+     SSL_set_shutdown(c->ssl->connection, mode);

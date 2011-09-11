@@ -1,0 +1,60 @@
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1312288588 -14400
+# Node ID bfa529856fb228a0d57321750460caab2e08a4ac
+# Parent  561a37709f6d7f31424a04d7e2c4855a7464a933
+Core: fix unused share zone handling on reload.
+
+The problem manifiests itself e.g. if one have
+
+    ssl_session_cache shared:SSL:1m;
+
+but no ssl certificates set.  If nginx is reloaded with certificate(s)
+added it will SIGSEGV.  Fix is to correctly ignore previously unused
+shared memory zones when looking though old zones.
+
+Additionally, don't try to free old unused shared memory zones and
+free old used ones if new one is unused.
+
+Reported by Delta Yeh,
+http://mailman.nginx.org/pipermail/nginx/2011-August/028343.html
+
+diff --git a/src/core/ngx_cycle.c b/src/core/ngx_cycle.c
+--- a/src/core/ngx_cycle.c
++++ b/src/core/ngx_cycle.c
+@@ -439,6 +439,11 @@ ngx_init_cycle(ngx_cycle_t *old_cycle)
+                 n = 0;
+             }
+ 
++            if (oshm_zone[n].init == NULL) {
++                /* old unused shared zone */
++                continue;
++            }
++
+             if (shm_zone[i].shm.name.len != oshm_zone[n].shm.name.len) {
+                 continue;
+             }
+@@ -622,6 +627,11 @@ ngx_init_cycle(ngx_cycle_t *old_cycle)
+             i = 0;
+         }
+ 
++        if (oshm_zone[i].init == NULL) {
++            /* old unused shared zone */
++            continue;
++        }
++
+         part = &cycle->shared_memory.part;
+         shm_zone = part->elts;
+ 
+@@ -636,6 +646,11 @@ ngx_init_cycle(ngx_cycle_t *old_cycle)
+                 n = 0;
+             }
+ 
++            if (shm_zone[n].init == NULL) {
++                /* unused shared zone */
++                continue;
++            }
++
+             if (oshm_zone[i].shm.name.len == shm_zone[n].shm.name.len
+                 && ngx_strncmp(oshm_zone[i].shm.name.data,
+                                shm_zone[n].shm.name.data,
