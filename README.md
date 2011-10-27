@@ -21,7 +21,7 @@ version.
 
 I applied the **non-rejected** patches to build my
 [nginx deb](http://debian.perusio.net "My Debian Repo with an up to date
-Nginx") package of the **1.1.4** version with the
+Nginx") package of the **1.1.6** version with the
 `upstream-keep-alive` patch and module.
 
 If any of the patches don't apply cleanly, they're moved to the `rejected`
