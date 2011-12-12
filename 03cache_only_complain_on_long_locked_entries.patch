@@ -1,0 +1,32 @@
+Sender: nginx-devel-bounces@nginx.org
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1323615350 -10800
+# Node ID 71a5724d332ff7cc5935e0f6c87e8a0036f3e682
+# Parent  a013347f89334734a7a0f65031895be52d87a5a0
+Cache: only complain on long locked entries.
+There have been multiple reports of cases where a real locked entry was
+removed, resulting in a segmentation fault later in a worker which locked
+the entry.  It looks like default inactive timeout isn't enough in real
+life.
+For now just ignore such locked entries, and move them to the top of the
+inactive queue to allow processing of other entries.
+diff --git a/src/http/ngx_http_file_cache.c b/src/http/ngx_http_file_cache.c
+--- a/src/http/ngx_http_file_cache.c
++++ b/src/http/ngx_http_file_cache.c
+@@ -1113,12 +1113,12 @@ ngx_http_file_cache_expire(ngx_http_file
+         /*
+          * abnormally exited workers may leave locked cache entries,
+          * and although it may be safe to remove them completely,
+-         * we prefer to remove them from inactive queue and rbtree
+-         * only, and to allow other leaks
++         * we prefer to just move them to the top of the inactive queue
+          */
+ 
+         ngx_queue_remove(q);
+-        ngx_rbtree_delete(&cache->sh->rbtree, &fcn->node);
++        fcn->expire = ngx_time() + cache->inactive;
++        ngx_queue_insert_head(&cache->sh->queue, &fcn->queue);
+ 
+         ngx_log_error(NGX_LOG_ALERT, ngx_cycle->log, 0,
+                       "ignore long locked inactive cache entry %*s, count:%d",

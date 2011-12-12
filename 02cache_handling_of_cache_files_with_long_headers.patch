@@ -1,0 +1,30 @@
+Sender: nginx-devel-bounces@nginx.org
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1323366111 -10800
+# Node ID a013347f89334734a7a0f65031895be52d87a5a0
+# Parent  64e354fb95e4ea72f479213ee4e8b4274413ce4f
+Cache: handling of cache files with long headers.
+There are two possible situations which can lead to this: response was
+cached with bigger proxy_buffer_size value (and nginx was restared since
+then, i.e. shared memory zone content was lost), or due to the race in
+the cache update code (see [1]) we've end up with fcn->body_start from
+a different response stored in shared memory zone.
+[1] http://mailman.nginx.org/pipermail/nginx-devel/2011-September/001287.html
+diff --git a/src/http/ngx_http_file_cache.c b/src/http/ngx_http_file_cache.c
+--- a/src/http/ngx_http_file_cache.c
++++ b/src/http/ngx_http_file_cache.c
+@@ -386,6 +386,13 @@ ngx_http_file_cache_read(ngx_http_reques
+         return NGX_DECLINED;
+     }
+ 
++    if (h->body_start > c->body_start) {
++        ngx_log_error(NGX_LOG_CRIT, r->connection->log, 0,
++                      "cache file \"%s\" has too long header",
++                      c->file.name.data);
++        return NGX_DECLINED;
++    }
++
+     c->buf->last += n;
+ 
+     c->valid_sec = h->valid_sec;

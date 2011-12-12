@@ -1,0 +1,357 @@
+Sender: nginx-devel-bounces@nginx.org
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1323615373 -10800
+# Node ID 9412a31366125763912dff5d592d539eb6102139
+# Parent  71a5724d332ff7cc5935e0f6c87e8a0036f3e682
+Cache locks initial implementation.
+New directives: proxy_cache_lock on/off, proxy_cache_lock_timeout.  With
+proxy_cache_lock set to on, only one request will be allowed to go to
+upstream, others will wait for up to proxy_cache_lock_timeout.  Waiting
+requests are re-check if they have cache file ready (or are allowed to run)
+every 500ms.
+Note: we intentionally don't intercept NGX_DECLINED possibly returned by
+ngx_http_file_cache_read().  This needs more work (possibly safe, but needs
+further investigation).  Anyway, it's exceptional situation.
+Note: probably there should be a way to disable caching of responses
+if there is already one request fetching resource to cache (without waiting
+at all).  Two possible ways include another cache lock option ("no_cache")
+or using proxy_no_cache with some supplied variable.
+Note: probably there should be a way to lock updating requests as well.  For
+now only "proxy_cache_use_stale updating" is available.
+diff --git a/src/http/modules/ngx_http_proxy_module.c b/src/http/modules/ngx_http_proxy_module.c
+--- a/src/http/modules/ngx_http_proxy_module.c
++++ b/src/http/modules/ngx_http_proxy_module.c
+@@ -405,6 +405,20 @@ static ngx_command_t  ngx_http_proxy_com
+       offsetof(ngx_http_proxy_loc_conf_t, upstream.cache_methods),
+       &ngx_http_upstream_cache_method_mask },
+ 
++    { ngx_string("proxy_cache_lock"),
++      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
++      ngx_conf_set_flag_slot,
++      NGX_HTTP_LOC_CONF_OFFSET,
++      offsetof(ngx_http_proxy_loc_conf_t, upstream.cache_lock),
++      NULL },
++
++    { ngx_string("proxy_cache_lock_timeout"),
++      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_msec_slot,
++      NGX_HTTP_LOC_CONF_OFFSET,
++      offsetof(ngx_http_proxy_loc_conf_t, upstream.cache_lock_timeout),
++      NULL },
++
+ #endif
+ 
+     { ngx_string("proxy_temp_path"),
+@@ -2459,6 +2473,8 @@ ngx_http_proxy_create_loc_conf(ngx_conf_
+     conf->upstream.cache_bypass = NGX_CONF_UNSET_PTR;
+     conf->upstream.no_cache = NGX_CONF_UNSET_PTR;
+     conf->upstream.cache_valid = NGX_CONF_UNSET_PTR;
++    conf->upstream.cache_lock = NGX_CONF_UNSET;
++    conf->upstream.cache_lock_timeout = NGX_CONF_UNSET_MSEC;
+ #endif
+ 
+     conf->upstream.hide_headers = NGX_CONF_UNSET_PTR;
+@@ -2705,6 +2721,12 @@ ngx_http_proxy_merge_loc_conf(ngx_conf_t
+         conf->cache_key = prev->cache_key;
+     }
+ 
++    ngx_conf_merge_value(conf->upstream.cache_lock,
++                              prev->upstream.cache_lock, 0);
++
++    ngx_conf_merge_msec_value(conf->upstream.cache_lock_timeout,
++                              prev->upstream.cache_lock_timeout, 5000);
++
+ #endif
+ 
+     if (conf->method.len == 0) {
+diff --git a/src/http/ngx_http_cache.h b/src/http/ngx_http_cache.h
+--- a/src/http/ngx_http_cache.h
++++ b/src/http/ngx_http_cache.h
+@@ -79,6 +79,14 @@ struct ngx_http_cache_s {
+     ngx_http_file_cache_t           *file_cache;
+     ngx_http_file_cache_node_t      *node;
+ 
++    ngx_msec_t                       lock_timeout;
++    ngx_msec_t                       wait_time;
++
++    ngx_event_t                      wait_event;
++
++    unsigned                         lock:1;
++    unsigned                         waiting:1;
++
+     unsigned                         updated:1;
+     unsigned                         updating:1;
+     unsigned                         exists:1;
+diff --git a/src/http/ngx_http_file_cache.c b/src/http/ngx_http_file_cache.c
+--- a/src/http/ngx_http_file_cache.c
++++ b/src/http/ngx_http_file_cache.c
+@@ -10,6 +10,9 @@
+ #include <ngx_md5.h>
+ 
+ 
++static ngx_int_t ngx_http_file_cache_lock(ngx_http_request_t *r,
++    ngx_http_cache_t *c);
++static void ngx_http_file_cache_lock_wait_handler(ngx_event_t *ev);
+ static ngx_int_t ngx_http_file_cache_read(ngx_http_request_t *r,
+     ngx_http_cache_t *c);
+ static ssize_t ngx_http_file_cache_aio_read(ngx_http_request_t *r,
+@@ -181,13 +184,13 @@ ngx_http_file_cache_create(ngx_http_requ
+         return NGX_ERROR;
+     }
+ 
++    cln->handler = ngx_http_file_cache_cleanup;
++    cln->data = c;
++
+     if (ngx_http_file_cache_exists(cache, c) == NGX_ERROR) {
+         return NGX_ERROR;
+     }
+ 
+-    cln->handler = ngx_http_file_cache_cleanup;
+-    cln->data = c;
+-
+     if (ngx_http_file_cache_name(r, cache->path) != NGX_OK) {
+         return NGX_ERROR;
+     }
+@@ -244,15 +247,24 @@ ngx_http_file_cache_open(ngx_http_reques
+ 
+     c = r->cache;
+ 
++    if (c->waiting) {
++        return NGX_AGAIN;
++    }
++
+     if (c->buf) {
+         return ngx_http_file_cache_read(r, c);
+     }
+ 
+     cache = c->file_cache;
+ 
+-    cln = ngx_pool_cleanup_add(r->pool, 0);
+-    if (cln == NULL) {
+-        return NGX_ERROR;
++    if (c->node == NULL) {
++        cln = ngx_pool_cleanup_add(r->pool, 0);
++        if (cln == NULL) {
++            return NGX_ERROR;
++        }
++
++        cln->handler = ngx_http_file_cache_cleanup;
++        cln->data = c;
+     }
+ 
+     rc = ngx_http_file_cache_exists(cache, c);
+@@ -264,9 +276,6 @@ ngx_http_file_cache_open(ngx_http_reques
+         return rc;
+     }
+ 
+-    cln->handler = ngx_http_file_cache_cleanup;
+-    cln->data = c;
+-
+     if (rc == NGX_AGAIN) {
+         return NGX_HTTP_CACHE_SCARCE;
+     }
+@@ -306,7 +315,7 @@ ngx_http_file_cache_open(ngx_http_reques
+     }
+ 
+     if (!test) {
+-        return NGX_DECLINED;
++        goto done;
+     }
+ 
+     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
+@@ -330,7 +339,7 @@ ngx_http_file_cache_open(ngx_http_reques
+ 
+         case NGX_ENOENT:
+         case NGX_ENOTDIR:
+-            return rv;
++            goto done;
+ 
+         default:
+             ngx_log_error(NGX_LOG_CRIT, r->connection->log, of.err,
+@@ -354,6 +363,114 @@ ngx_http_file_cache_open(ngx_http_reques
+     }
+ 
+     return ngx_http_file_cache_read(r, c);
++
++done:
++
++    if (rv == NGX_DECLINED) {
++        return ngx_http_file_cache_lock(r, c);
++    }
++
++    return rv;
++}
++
++
++static ngx_int_t
++ngx_http_file_cache_lock(ngx_http_request_t *r, ngx_http_cache_t *c)
++{
++    ngx_msec_t                 now, timer;
++    ngx_http_file_cache_t     *cache;
++
++    if (!c->lock) {
++        return NGX_DECLINED;
++    }
++
++    cache = c->file_cache;
++
++    ngx_shmtx_lock(&cache->shpool->mutex);
++
++    if (!c->node->updating) {
++        c->node->updating = 1;
++        c->updating = 1;
++    }
++
++    ngx_shmtx_unlock(&cache->shpool->mutex);
++
++    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
++                   "http file cache lock u:%d wt:%M",
++                   c->updating, c->wait_time);
++
++    if (c->updating) {
++        return NGX_DECLINED;
++    }
++
++    c->waiting = 1;
++
++    now = ngx_current_msec;
++
++    if (c->wait_time == 0) {
++        c->wait_time = now + c->lock_timeout;
++
++        c->wait_event.handler = ngx_http_file_cache_lock_wait_handler;
++        c->wait_event.data = r;
++        c->wait_event.log = r->connection->log;
++    }
++
++    timer = c->wait_time - now;
++
++    ngx_add_timer(&c->wait_event, (timer > 500) ? 500 : timer);
++
++    r->main->blocked++;
++
++    return NGX_AGAIN;
++}
++
++
++static void
++ngx_http_file_cache_lock_wait_handler(ngx_event_t *ev)
++{
++    ngx_uint_t                 wait;
++    ngx_msec_t                 timer;
++    ngx_http_cache_t          *c;
++    ngx_http_request_t        *r;
++    ngx_http_file_cache_t     *cache;
++
++    r = ev->data;
++    c = r->cache;
++
++    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, ev->log, 0,
++                   "http file cache wait handler wt:%M cur:%M",
++                   c->wait_time, ngx_current_msec);
++
++    timer = c->wait_time - ngx_current_msec;
++
++    if ((ngx_msec_int_t) timer <= 0) {
++        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, ev->log, 0,
++                       "http file cache lock timeout");
++        c->lock = 0;
++        goto wakeup;
++    }
++
++    cache = c->file_cache;
++    wait = 0;
++
++    ngx_shmtx_lock(&cache->shpool->mutex);
++
++    if (c->node->updating) {
++        wait = 1;
++    }
++
++    ngx_shmtx_unlock(&cache->shpool->mutex);
++
++    if (wait) {
++        ngx_add_timer(ev, (timer > 500) ? 500 : timer);
++        return;
++    }
++
++wakeup:
++
++    c->waiting = 0;
++    r->main->blocked--;
++    r->connection->write->handler(r->connection->write);
+ }
+ 
+ 
+@@ -518,13 +635,19 @@ ngx_http_file_cache_exists(ngx_http_file
+ 
+     ngx_shmtx_lock(&cache->shpool->mutex);
+ 
+-    fcn = ngx_http_file_cache_lookup(cache, c->key);
++    fcn = c->node;
++
++    if (fcn == NULL) {
++        fcn = ngx_http_file_cache_lookup(cache, c->key);
++    }
+ 
+     if (fcn) {
+         ngx_queue_remove(&fcn->queue);
+ 
+-        fcn->uses++;
+-        fcn->count++;
++        if (c->node == NULL) {
++            fcn->uses++;
++            fcn->count++;
++        }
+ 
+         if (fcn->error) {
+ 
+@@ -621,6 +744,10 @@ ngx_http_file_cache_name(ngx_http_reques
+ 
+     c = r->cache;
+ 
++    if (c->file.name.len) {
++        return NGX_OK;
++    }
++
+     c->file.name.len = path->name.len + 1 + path->len
+                        + 2 * NGX_HTTP_CACHE_KEY_LEN;
+ 
+@@ -957,6 +1084,10 @@ ngx_http_file_cache_free(ngx_http_cache_
+             }
+         }
+     }
++
++    if (c->wait_event.timer_set) {
++        ngx_del_timer(&c->wait_event);
++    }
+ }
+ 
+ 
+diff --git a/src/http/ngx_http_upstream.c b/src/http/ngx_http_upstream.c
+--- a/src/http/ngx_http_upstream.c
++++ b/src/http/ngx_http_upstream.c
+@@ -707,6 +707,9 @@ ngx_http_upstream_cache(ngx_http_request
+         c->body_start = u->conf->buffer_size;
+         c->file_cache = u->conf->cache->data;
+ 
++        c->lock = u->conf->cache_lock;
++        c->lock_timeout = u->conf->cache_lock_timeout;
++
+         u->cache_status = NGX_HTTP_CACHE_MISS;
+     }
+ 
+diff --git a/src/http/ngx_http_upstream.h b/src/http/ngx_http_upstream.h
+--- a/src/http/ngx_http_upstream.h
++++ b/src/http/ngx_http_upstream.h
+@@ -165,6 +165,9 @@ typedef struct {
+     ngx_uint_t                       cache_use_stale;
+     ngx_uint_t                       cache_methods;
+ 
++    ngx_flag_t                       cache_lock;
++    ngx_msec_t                       cache_lock_timeout;
++
+     ngx_array_t                     *cache_valid;
+     ngx_array_t                     *cache_bypass;
+     ngx_array_t                     *no_cache;

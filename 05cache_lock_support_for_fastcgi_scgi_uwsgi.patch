@@ -1,0 +1,145 @@
+Sender: nginx-devel-bounces@nginx.org
+# HG changeset patch
+# User Maxim Dounin <mdounin@mdounin.ru>
+# Date 1323615378 -10800
+# Node ID c162e2269b4c85e4d52f779e5a154ef761f3e6ba
+# Parent  9412a31366125763912dff5d592d539eb6102139
+Cache lock support for fastcgi, scgi, uwsgi.
+diff --git a/src/http/modules/ngx_http_fastcgi_module.c b/src/http/modules/ngx_http_fastcgi_module.c
+--- a/src/http/modules/ngx_http_fastcgi_module.c
++++ b/src/http/modules/ngx_http_fastcgi_module.c
+@@ -380,6 +380,20 @@ static ngx_command_t  ngx_http_fastcgi_c
+       offsetof(ngx_http_fastcgi_loc_conf_t, upstream.cache_methods),
+       &ngx_http_upstream_cache_method_mask },
+ 
++    { ngx_string("fastcgi_cache_lock"),
++      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
++      ngx_conf_set_flag_slot,
++      NGX_HTTP_LOC_CONF_OFFSET,
++      offsetof(ngx_http_fastcgi_loc_conf_t, upstream.cache_lock),
++      NULL },
++
++    { ngx_string("fastcgi_cache_lock_timeout"),
++      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_msec_slot,
++      NGX_HTTP_LOC_CONF_OFFSET,
++      offsetof(ngx_http_fastcgi_loc_conf_t, upstream.cache_lock_timeout),
++      NULL },
++
+ #endif
+ 
+     { ngx_string("fastcgi_temp_path"),
+@@ -2062,6 +2076,8 @@ ngx_http_fastcgi_create_loc_conf(ngx_con
+     conf->upstream.cache_bypass = NGX_CONF_UNSET_PTR;
+     conf->upstream.no_cache = NGX_CONF_UNSET_PTR;
+     conf->upstream.cache_valid = NGX_CONF_UNSET_PTR;
++    conf->upstream.cache_lock = NGX_CONF_UNSET;
++    conf->upstream.cache_lock_timeout = NGX_CONF_UNSET_MSEC;
+ #endif
+ 
+     conf->upstream.hide_headers = NGX_CONF_UNSET_PTR;
+@@ -2299,6 +2315,12 @@ ngx_http_fastcgi_merge_loc_conf(ngx_conf
+         conf->cache_key = prev->cache_key;
+     }
+ 
++    ngx_conf_merge_value(conf->upstream.cache_lock,
++                              prev->upstream.cache_lock, 0);
++
++    ngx_conf_merge_msec_value(conf->upstream.cache_lock_timeout,
++                              prev->upstream.cache_lock_timeout, 5000);
++
+ #endif
+ 
+     ngx_conf_merge_value(conf->upstream.pass_request_headers,
+diff --git a/src/http/modules/ngx_http_scgi_module.c b/src/http/modules/ngx_http_scgi_module.c
+--- a/src/http/modules/ngx_http_scgi_module.c
++++ b/src/http/modules/ngx_http_scgi_module.c
+@@ -247,6 +247,20 @@ static ngx_command_t ngx_http_scgi_comma
+       offsetof(ngx_http_scgi_loc_conf_t, upstream.cache_methods),
+       &ngx_http_upstream_cache_method_mask },
+ 
++    { ngx_string("scgi_cache_lock"),
++      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
++      ngx_conf_set_flag_slot,
++      NGX_HTTP_LOC_CONF_OFFSET,
++      offsetof(ngx_http_scgi_loc_conf_t, upstream.cache_lock),
++      NULL },
++
++    { ngx_string("scgi_cache_lock_timeout"),
++      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_msec_slot,
++      NGX_HTTP_LOC_CONF_OFFSET,
++      offsetof(ngx_http_scgi_loc_conf_t, upstream.cache_lock_timeout),
++      NULL },
++
+ #endif
+ 
+     { ngx_string("scgi_temp_path"),
+@@ -1039,6 +1053,8 @@ ngx_http_scgi_create_loc_conf(ngx_conf_t
+     conf->upstream.cache_bypass = NGX_CONF_UNSET_PTR;
+     conf->upstream.no_cache = NGX_CONF_UNSET_PTR;
+     conf->upstream.cache_valid = NGX_CONF_UNSET_PTR;
++    conf->upstream.cache_lock = NGX_CONF_UNSET;
++    conf->upstream.cache_lock_timeout = NGX_CONF_UNSET_MSEC;
+ #endif
+ 
+     conf->upstream.hide_headers = NGX_CONF_UNSET_PTR;
+@@ -1266,6 +1282,12 @@ ngx_http_scgi_merge_loc_conf(ngx_conf_t 
+         conf->cache_key = prev->cache_key;
+     }
+ 
++    ngx_conf_merge_value(conf->upstream.cache_lock,
++                              prev->upstream.cache_lock, 0);
++
++    ngx_conf_merge_msec_value(conf->upstream.cache_lock_timeout,
++                              prev->upstream.cache_lock_timeout, 5000);
++
+ #endif
+ 
+     ngx_conf_merge_value(conf->upstream.pass_request_headers,
+diff --git a/src/http/modules/ngx_http_uwsgi_module.c b/src/http/modules/ngx_http_uwsgi_module.c
+--- a/src/http/modules/ngx_http_uwsgi_module.c
++++ b/src/http/modules/ngx_http_uwsgi_module.c
+@@ -274,6 +274,20 @@ static ngx_command_t ngx_http_uwsgi_comm
+       offsetof(ngx_http_uwsgi_loc_conf_t, upstream.cache_methods),
+       &ngx_http_upstream_cache_method_mask },
+ 
++    { ngx_string("uwsgi_cache_lock"),
++      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
++      ngx_conf_set_flag_slot,
++      NGX_HTTP_LOC_CONF_OFFSET,
++      offsetof(ngx_http_uwsgi_loc_conf_t, upstream.cache_lock),
++      NULL },
++
++    { ngx_string("uwsgi_cache_lock_timeout"),
++      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
++      ngx_conf_set_msec_slot,
++      NGX_HTTP_LOC_CONF_OFFSET,
++      offsetof(ngx_http_uwsgi_loc_conf_t, upstream.cache_lock_timeout),
++      NULL },
++
+ #endif
+ 
+     { ngx_string("uwsgi_temp_path"),
+@@ -1090,6 +1104,8 @@ ngx_http_uwsgi_create_loc_conf(ngx_conf_
+     conf->upstream.cache_bypass = NGX_CONF_UNSET_PTR;
+     conf->upstream.no_cache = NGX_CONF_UNSET_PTR;
+     conf->upstream.cache_valid = NGX_CONF_UNSET_PTR;
++    conf->upstream.cache_lock = NGX_CONF_UNSET;
++    conf->upstream.cache_lock_timeout = NGX_CONF_UNSET_MSEC;
+ #endif
+ 
+     conf->upstream.hide_headers = NGX_CONF_UNSET_PTR;
+@@ -1317,6 +1333,12 @@ ngx_http_uwsgi_merge_loc_conf(ngx_conf_t
+         conf->cache_key = prev->cache_key;
+     }
+ 
++    ngx_conf_merge_value(conf->upstream.cache_lock,
++                              prev->upstream.cache_lock, 0);
++
++    ngx_conf_merge_msec_value(conf->upstream.cache_lock_timeout,
++                              prev->upstream.cache_lock_timeout, 5000);
++
+ #endif
+ 
+     ngx_conf_merge_value(conf->upstream.pass_request_headers,
