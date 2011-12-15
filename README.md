@@ -18,3 +18,6 @@ directory.
 This repository is provided as a **convenience** since as of now there's
 no _official_ repo for theses patches. They're being provided **solely**
 through the mailing list.
+
+The patches that are **not** on the `rejected` subdir were used in
+building my [Nginx debian package](http://debian.perusio.net/unstable).
